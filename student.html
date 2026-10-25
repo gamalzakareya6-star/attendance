@@ -86,12 +86,12 @@
             // هل سجّل هذا الجهاز مسبقاً؟
             const prev = await getDoc(doc(db, "attendance", `${sessionId}_${auth.currentUser.uid}`));
             if (prev.exists()) {
-                info.textContent = `المادة: ${s.subject}`;
+                info.textContent = `المادة: ${s.subject}${s.specialization ? ' — ' + s.specialization : ''}`;
                 show("لقد قمت بتسجيل الحضور مسبقاً من هذا الجهاز ✅", "var(--warning)");
                 return;
             }
 
-            info.textContent = `المادة: ${s.subject}`;
+            info.textContent = `المادة: ${s.subject}${s.specialization ? ' — ' + s.specialization : ''}`;
             document.getElementById('form-container').style.display = 'block';
         } catch (e) {
             console.error(e);

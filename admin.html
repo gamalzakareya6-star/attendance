@@ -6,69 +6,167 @@
     <title>لوحة التحكم - إدارة الحضور</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
-        :root { --primary:#4f46e5; --primary-hover:#4338ca; --success:#16a34a; --danger:#dc2626; --bg:#f8fafc; --card-bg:#fff; --text:#1e293b; --gray:#64748b; --border:#e2e8f0; }
-        body { font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:var(--bg); margin:0; padding:20px; color:var(--text); }
-        .container { max-width:750px; margin:auto; background:var(--card-bg); padding:30px; border-radius:16px; box-shadow:0 10px 25px -5px rgba(0,0,0,.05); }
-        .header-bar { display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid var(--border); padding-bottom:15px; margin-bottom:25px; }
-        .section { background:#fbfcfe; border:1px solid var(--border); padding:20px; border-radius:12px; margin-bottom:20px; }
-        input, select { width:100%; padding:10px 14px; font-size:15px; border-radius:8px; border:1px solid #cbd5e1; box-sizing:border-box; margin-bottom:10px; outline:none; }
+        :root { --primary:#4f46e5; --primary-hover:#4338ca; --success:#16a34a; --danger:#dc2626; --warning:#d97706; --bg:#f8fafc; --card-bg:#fff; --text:#1e293b; --gray:#64748b; --border:#e2e8f0; }
+        * { box-sizing:border-box; }
+        body { font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:var(--bg); margin:0; padding:15px; color:var(--text); }
+        .container { max-width:820px; margin:auto; background:var(--card-bg); padding:24px; border-radius:16px; box-shadow:0 10px 25px -5px rgba(0,0,0,.05); }
+        .header-bar { display:flex; justify-content:space-between; align-items:center; gap:10px; border-bottom:2px solid var(--border); padding-bottom:15px; margin-bottom:20px; flex-wrap:wrap; }
+        .header-bar h2 { margin:0; font-size:20px; }
+        .who { font-size:13px; color:var(--gray); margin-top:4px; }
+        .badge { display:inline-block; padding:2px 10px; border-radius:20px; font-size:12px; font-weight:700; color:#fff; background:var(--primary); margin-inline-start:6px; }
+        .badge.super { background:var(--warning); }
+        .section { background:#fbfcfe; border:1px solid var(--border); padding:18px; border-radius:12px; margin-bottom:18px; }
+        .section h3 { margin-top:0; }
+        label { display:block; font-size:13px; color:var(--gray); font-weight:600; margin-bottom:4px; }
+        input, select { width:100%; padding:10px 14px; font-size:15px; border-radius:8px; border:1px solid #cbd5e1; margin-bottom:10px; outline:none; background:#fff; }
+        input:focus, select:focus { border-color:var(--primary); }
         button { padding:10px 18px; font-size:15px; font-weight:600; border-radius:8px; border:none; background:var(--primary); color:#fff; cursor:pointer; width:100%; }
         button:hover { background:var(--primary-hover); }
-        .btn-danger { background:var(--danger); width:auto; padding:8px 16px; }
+        button:disabled { opacity:.6; cursor:default; }
+        .btn-danger { background:var(--danger); }
         .btn-danger:hover { background:#b91c1c; }
         .btn-success { background:var(--success); }
+        .btn-warning { background:var(--warning); }
+        .btn-sm { width:auto; padding:5px 10px; font-size:12px; margin:2px; }
+        .btn-top { width:auto; padding:8px 16px; }
+        .row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        @media (max-width:560px) { .row2 { grid-template-columns:1fr; } }
         #qrcode { margin:15px auto; display:flex; justify-content:center; background:#fff; padding:10px; border-radius:8px; width:fit-content; box-shadow:0 4px 6px -1px rgba(0,0,0,.05); }
-        table { width:100%; border-collapse:collapse; margin-top:15px; background:#fff; border-radius:8px; overflow:hidden; border:1px solid var(--border); }
-        th, td { border:1px solid var(--border); padding:10px 12px; text-align:center; font-size:14px; }
+        .table-wrap { overflow-x:auto; }
+        table { width:100%; border-collapse:collapse; margin-top:12px; background:#fff; border:1px solid var(--border); }
+        th, td { border:1px solid var(--border); padding:8px 10px; text-align:center; font-size:13px; }
         th { background:#f1f5f9; }
         .muted { color:var(--gray); }
+        .hidden { display:none; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="header-bar">
-        <h2>لوحة التحكم (حماية QR متحرك)</h2>
-        <button class="btn-danger" id="logout-btn">تسجيل الخروج</button>
+        <div>
+            <h2>لوحة التحكم (حماية QR متحرك)</h2>
+            <div class="who"><span id="who-name"></span><span class="badge" id="role-badge"></span></div>
+        </div>
+        <button class="btn-danger btn-top" id="logout-btn">تسجيل الخروج</button>
     </div>
 
+    <!-- الملف الشخصي -->
+    <div class="section">
+        <h3>ملفي الشخصي</h3>
+        <div class="row2">
+            <div>
+                <label for="profile-name">الاسم</label>
+                <input type="text" id="profile-name" maxlength="60">
+            </div>
+            <div>
+                <label for="profile-spec">تخصصي</label>
+                <select id="profile-spec"></select>
+            </div>
+        </div>
+        <button id="save-profile-btn">حفظ الملف الشخصي</button>
+    </div>
+
+    <!-- جلسة جديدة -->
     <div class="section">
         <h3>1. فتح جلسة حضور جديدة</h3>
-        <input type="text" id="subject-name" placeholder="اسم المحاضرة (مثال: كيمياء تحليلية)" maxlength="80">
+        <label for="subject-name">اسم المحاضرة</label>
+        <input type="text" id="subject-name" placeholder="مثال: كيمياء تحليلية" maxlength="80">
+        <div class="row2">
+            <div>
+                <label for="session-spec">التخصص</label>
+                <select id="session-spec"></select>
+            </div>
+            <div>
+                <label for="refresh-select">مدة تغيّر الـ QR (بالثواني)</label>
+                <select id="refresh-select"></select>
+            </div>
+        </div>
         <button id="create-btn">بدء الجلسة وتفعيل الـ QR المتحرك</button>
     </div>
 
-    <div class="section" id="qr-section" style="display:none; text-align:center;">
-        <h3>2. رمز الاستجابة السريع (متغير لمنع التزييف)</h3>
-        <p class="muted" style="font-size:13px;">يتحدث الـ QR تلقائياً كل 20 ثانية. اعرضه على الشاشة داخل القاعة فقط.</p>
+    <!-- QR -->
+    <div class="section hidden" id="qr-section" style="text-align:center;">
+        <h3>2. رمز الاستجابة السريع</h3>
+        <p class="muted" style="font-size:13px;">أبقِ هذه الصفحة مفتوحة وظاهرة، فالمتصفح يبطئ التحديث إذا انتقلت لتبويب آخر.</p>
         <div id="qrcode"></div>
-        <p id="timer-display" style="font-weight:bold; color:var(--primary); margin-top:5px;"></p>
-        <button class="btn-danger" id="close-btn" style="width:100%;">إغلاق الجلسة الآن</button>
+        <p id="timer-display" style="font-weight:bold; color:var(--primary);"></p>
+        <button class="btn-danger" id="close-btn">إغلاق الجلسة الآن</button>
     </div>
 
+    <!-- الحضور -->
     <div class="section">
-        <h3>3. سجل الحضور اللحظي</h3>
+        <h3>3. سجل الحضور</h3>
         <select id="session-selector">
             <option value="">-- اختر الجلسة لعرض الحضور --</option>
         </select>
 
-        <button id="export-btn" class="btn-success" style="display:none; margin-top:10px;">تصدير الحضور إلى Excel</button>
+        <div id="session-tools" class="hidden">
+            <button id="resume-btn" class="btn-warning hidden" style="margin-bottom:8px;">عرض الـ QR لهذه الجلسة</button>
+            <button id="export-btn" class="btn-success" style="margin-bottom:8px;">تصدير الحضور إلى Excel</button>
+            <button id="delete-session-btn" class="btn-danger hidden" style="margin-bottom:8px;">حذف الجلسة وكل حضورها (مشرف عام)</button>
 
-        <table>
-            <thead>
-                <tr><th>م</th><th>اسم الطالب</th><th>وقت التسجيل</th></tr>
-            </thead>
-            <tbody id="attendance-list">
-                <tr><td colspan="3" class="muted">اختر جلسة لعرض الحضور</td></tr>
-            </tbody>
-        </table>
+            <label for="manual-name" style="margin-top:6px;">إضافة طالب يدويًا</label>
+            <div class="row2">
+                <input type="text" id="manual-name" placeholder="اسم الطالب" maxlength="80">
+                <button id="manual-add-btn">إضافة للحضور</button>
+            </div>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>م</th><th>اسم الطالب</th><th>النوع</th><th>الوقت</th><th>إجراء</th></tr>
+                </thead>
+                <tbody id="attendance-list">
+                    <tr><td colspan="5" class="muted">اختر جلسة لعرض الحضور</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- المشرف العام فقط -->
+    <div class="section hidden" id="super-section">
+        <h3>إدارة المشرفين (مشرف عام)</h3>
+        <div class="row2">
+            <div><label for="new-admin-name">الاسم</label><input type="text" id="new-admin-name" maxlength="60"></div>
+            <div><label for="new-admin-email">البريد الإلكتروني</label><input type="email" id="new-admin-email" autocomplete="off"></div>
+            <div><label for="new-admin-pass">كلمة المرور (6 أحرف فأكثر)</label><input type="password" id="new-admin-pass" autocomplete="new-password"></div>
+            <div><label for="new-admin-spec">التخصص</label><select id="new-admin-spec"></select></div>
+            <div>
+                <label for="new-admin-role">الصلاحية</label>
+                <select id="new-admin-role">
+                    <option value="admin">مشرف عادي</option>
+                    <option value="super">مشرف عام</option>
+                </select>
+            </div>
+        </div>
+        <button id="add-admin-btn">إنشاء حساب المشرف</button>
+
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>الاسم</th><th>البريد</th><th>الصلاحية</th><th>التخصص</th><th>إجراء</th></tr></thead>
+                <tbody id="admins-list"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- السجل -->
+    <div class="section">
+        <h3 id="logs-title">سجل نشاطي</h3>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>الوقت</th><th>الإجراء</th></tr></thead>
+                <tbody id="logs-list"></tbody>
+            </table>
+        </div>
     </div>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, getDoc, getDocs, setDoc, query, where, orderBy, limit, onSnapshot, updateDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, collection, addDoc, getDoc, getDocs, setDoc, deleteDoc, query, where, orderBy, limit, onSnapshot, updateDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyAR_8fKmcHa3KDxt4AIt2ZMQ59UDMrZlDE",
@@ -81,17 +179,74 @@
         measurementId: "G-R955LS94GJ"
     };
 
+    // ===== إعدادات يمكنك تعديلها =====
+    const REFRESH_OPTIONS = [5, 10, 15, 20, 30, 40, 50, 60];
+    const SPECIALIZATIONS = [
+        "علم الحيوان", "علم النبات", "الكيمياء", "الفيزياء", "الجيولوجيا",
+        "الرياضيات البحتة وعلوم الحاسب", "الكيمياء الحيوية", "علم الحشرات",
+        "الميكروبيولوجي", "أخرى"
+    ];
+    const GRACE_SECONDS = 20;       // مهلة للطالب ليكتب اسمه بعد مسح الرمز
+    const SESSION_MINUTES = 45;     // مدة بقاء الجلسة مفتوحة
+
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    let qrInterval = null;
-    let timerInterval = null;
-    let unsubscribeAttendance = null;
-    let currentSessionId = null;
-    let currentAttendanceData = [];
-
     const $ = (id) => document.getElementById(id);
+
+    let me = null;               // بيانات المشرف الحالي
+    let isSuper = false;
+    let qrInterval = null, timerInterval = null, rotating = false;
+    let unsubscribeAttendance = null;
+    let currentSessionId = null; // الجلسة التي يعرض لها QR الآن
+    let viewedSessionId = null;  // الجلسة المعروض حضورها
+    let currentAttendanceData = [];
+    const sessionsCache = new Map();
+
+    // ---------- أدوات مساعدة ----------
+    function fillSelect(sel, values, selected) {
+        sel.replaceChildren();
+        values.forEach(v => {
+            const o = document.createElement('option');
+            o.value = v; o.textContent = v;
+            if (v === selected) o.selected = true;
+            sel.appendChild(o);
+        });
+    }
+
+    function cell(text) {
+        const td = document.createElement('td');
+        td.textContent = text;
+        return td;
+    }
+
+    function smallBtn(text, cls, onClick) {
+        const b = document.createElement('button');
+        b.textContent = text;
+        b.className = 'btn-sm ' + (cls || '');
+        b.addEventListener('click', onClick);
+        return b;
+    }
+
+    function messageRow(tbody, cols, text) {
+        const tr = document.createElement('tr');
+        const td = cell(text);
+        td.colSpan = cols; td.className = 'muted';
+        tr.appendChild(td);
+        tbody.replaceChildren(tr);
+    }
+
+    function toDate(ts) {
+        if (!ts) return null;
+        if (ts.toDate) return ts.toDate();
+        return new Date(ts);
+    }
+
+    function fmtTime(ts) {
+        const d = toDate(ts);
+        return d ? d.toLocaleString('ar-EG') : '...';
+    }
 
     function newToken() {
         const a = new Uint32Array(3);
@@ -99,12 +254,16 @@
         return Array.from(a, n => n.toString(36)).join('').slice(0, 12);
     }
 
-    function stopQR() {
-        if (qrInterval) clearInterval(qrInterval);
-        if (timerInterval) clearInterval(timerInterval);
-        qrInterval = timerInterval = null;
+    async function logAction(action, sessionId) {
+        try {
+            const data = { action, timestamp: serverTimestamp() };
+            if (sessionId) data.sessionId = sessionId;
+            await addDoc(collection(db, "admins", me.uid, "logs"), data);
+            if (viewedLogsUid === me.uid) loadLogs(me.uid);
+        } catch (e) { console.warn("log failed", e); }
     }
 
+    // ---------- الدخول ----------
     onAuthStateChanged(auth, async (user) => {
         if (!user) { window.location.href = "index.html"; return; }
         try {
@@ -114,12 +273,34 @@
                 window.location.href = "index.html";
                 return;
             }
-            loadSessionsList();
+            me = { uid: user.uid, email: user.email, ...snap.data() };
+            isSuper = me.role === 'super';
+            initUI();
         } catch (e) {
             console.error(e);
             window.location.href = "index.html";
         }
     });
+
+    function initUI() {
+        $('who-name').textContent = me.name || me.email;
+        const badge = $('role-badge');
+        badge.textContent = isSuper ? 'مشرف عام' : 'مشرف';
+        if (isSuper) badge.classList.add('super');
+
+        $('profile-name').value = me.name || '';
+        fillSelect($('profile-spec'), SPECIALIZATIONS, me.specialization);
+        fillSelect($('session-spec'), SPECIALIZATIONS, me.specialization);
+        fillSelect($('new-admin-spec'), SPECIALIZATIONS);
+        fillSelect($('refresh-select'), REFRESH_OPTIONS.map(String), '20');
+
+        if (isSuper) {
+            $('super-section').classList.remove('hidden');
+            loadAdmins();
+        }
+        loadSessionsList();
+        loadLogs(me.uid);
+    }
 
     async function logoutAdmin() {
         stopQR();
@@ -128,33 +309,58 @@
         window.location.href = "index.html";
     }
 
+    // ---------- الملف الشخصي ----------
+    async function saveProfile() {
+        const name = $('profile-name').value.trim();
+        const specialization = $('profile-spec').value;
+        if (!name) { alert("اكتب اسمك."); return; }
+        try {
+            await updateDoc(doc(db, "admins", me.uid), { name, specialization });
+            me.name = name; me.specialization = specialization;
+            $('who-name').textContent = name;
+            $('session-spec').value = specialization;
+            alert("تم الحفظ.");
+        } catch (e) {
+            console.error(e);
+            alert("تعذّر الحفظ.");
+        }
+    }
+
+    // ---------- الجلسات و QR ----------
     async function createSession() {
         const subject = $('subject-name').value.trim();
-        if (!subject) { alert("الرجاء إدخال اسم المادة!"); return; }
+        if (!subject) { alert("الرجاء إدخال اسم المحاضرة!"); return; }
+
+        const refreshSeconds = Number($('refresh-select').value);
+        const specialization = $('session-spec').value;
+        $('create-btn').disabled = true;
 
         try {
             const now = Date.now();
             const docRef = await addDoc(collection(db, "sessions"), {
-                subject: subject,
+                subject,
+                specialization,
+                createdBy: me.uid,
+                createdByName: me.name || me.email,
                 createdAt: now,
-                expiresAt: now + 45 * 60 * 1000,
+                expiresAt: now + SESSION_MINUTES * 60 * 1000,
                 active: true,
-                createdBy: auth.currentUser.uid
+                refreshSeconds
             });
 
             currentSessionId = docRef.id;
-            // الرمز الأول: لا يوجد سابق
-            const first = newToken();
-            await setDoc(doc(db, "sessions", currentSessionId, "private", "code"), { current: first, previous: first });
+            $('qr-section').classList.remove('hidden');
+            await startDynamicQR(currentSessionId, refreshSeconds);
+            logAction(`فتح جلسة: ${subject}`, currentSessionId);
 
-            $('qr-section').style.display = 'block';
-            startDynamicQR(currentSessionId, first);
             await loadSessionsList();
             $('session-selector').value = currentSessionId;
-            loadAttendance();
+            onSessionChange();
         } catch (error) {
             console.error(error);
-            alert("حدث خطأ أثناء إنشاء الجلسة. تأكد أنك مضاف كمشرف وأن القواعد منشورة.");
+            alert("حدث خطأ أثناء إنشاء الجلسة. تأكد من نشر القواعد ومن وجود مستندك في admins.");
+        } finally {
+            $('create-btn').disabled = false;
         }
     }
 
@@ -165,31 +371,42 @@
         new QRCode($('qrcode'), { text: url, width: 220, height: 220 });
     }
 
-    function startDynamicQR(sessionId, firstToken) {
+    function stopQR() {
+        if (qrInterval) clearInterval(qrInterval);
+        if (timerInterval) clearInterval(timerInterval);
+        qrInterval = timerInterval = null;
+    }
+
+    async function startDynamicQR(sessionId, refreshSec) {
         stopQR();
-        let current = firstToken;
-        let timeLeft = 20;
+        // عدد الرموز الصالحة معًا: يكفي لمنح الطالب مهلة بعد المسح
+        const keep = Math.ceil(GRACE_SECONDS / refreshSec) + 1;
+        let tokens = [];
+        let timeLeft = refreshSec;
+        const codeRef = doc(db, "sessions", sessionId, "private", "code");
 
-        drawQR(sessionId, current);
+        async function rotate() {
+            if (rotating) return;
+            rotating = true;
+            try {
+                const t = newToken();
+                const next = [...tokens, t].slice(-keep);
+                await setDoc(codeRef, { current: t, valid: next });
+                tokens = next;
+                drawQR(sessionId, t);
+                timeLeft = refreshSec;
+            } finally {
+                rotating = false;
+            }
+        }
 
+        await rotate();   // أول رمز: إن فشل يظهر الخطأ لمن استدعى الدالة
+
+        qrInterval = setInterval(() => { rotate().catch(e => console.error("token update failed", e)); }, refreshSec * 1000);
         timerInterval = setInterval(() => {
             timeLeft = Math.max(0, timeLeft - 1);
             $('timer-display').textContent = `يتغير الرمز خلال: ${timeLeft} ثانية`;
         }, 1000);
-
-        qrInterval = setInterval(async () => {
-            const previous = current;
-            const next = newToken();
-            try {
-                // نُبقي الرمز السابق صالحاً لفترة سماح حتى لا يفشل من مسح الرمز لحظة التحديث
-                await setDoc(doc(db, "sessions", sessionId, "private", "code"), { current: next, previous: previous });
-                current = next;
-                drawQR(sessionId, current);
-                timeLeft = 20;
-            } catch (e) {
-                console.error("token update failed", e);
-            }
-        }, 20000);
     }
 
     async function closeSession() {
@@ -198,75 +415,187 @@
         stopQR();
         try {
             await updateDoc(doc(db, "sessions", currentSessionId), { active: false });
-            $('qr-section').style.display = 'none';
+            logAction("إغلاق جلسة", currentSessionId);
+            $('qr-section').classList.add('hidden');
             $('qrcode').innerHTML = "";
+            await loadSessionsList();
+            $('session-selector').value = viewedSessionId || "";
+            onSessionChange();
         } catch (e) {
             console.error(e);
             alert("تعذّر إغلاق الجلسة.");
         }
     }
 
-    async function loadSessionsList() {
-        const selector = $('session-selector');
-        selector.innerHTML = '<option value="">-- اختر الجلسة لعرض الحضور --</option>';
-
-        const snap = await getDocs(query(collection(db, "sessions"), orderBy("createdAt", "desc"), limit(50)));
-        snap.forEach((docSnap) => {
-            const data = docSnap.data();
-            const opt = document.createElement('option');
-            opt.value = docSnap.id;
-            opt.textContent = `${data.subject} (${new Date(data.createdAt).toLocaleDateString('ar-EG')})`;
-            selector.appendChild(opt);
-        });
+    async function resumeQR() {
+        const s = sessionsCache.get(viewedSessionId);
+        if (!s) return;
+        currentSessionId = viewedSessionId;
+        $('qr-section').classList.remove('hidden');
+        try {
+            await startDynamicQR(currentSessionId, s.refreshSeconds || 20);
+            $('qr-section').scrollIntoView({ behavior: 'smooth' });
+        } catch (e) {
+            console.error(e);
+            alert("تعذّر تشغيل الـ QR.");
+        }
     }
 
-    function formatTime(ts) {
-        const d = ts && ts.toDate ? ts.toDate() : new Date(ts);
-        return d.toLocaleTimeString('ar-EG');
+    async function loadSessionsList() {
+        const selector = $('session-selector');
+        const keepValue = selector.value;
+        selector.replaceChildren();
+        const first = document.createElement('option');
+        first.value = ""; first.textContent = "-- اختر الجلسة لعرض الحضور --";
+        selector.appendChild(first);
+
+        const q = isSuper
+            ? query(collection(db, "sessions"), limit(200))
+            : query(collection(db, "sessions"), where("createdBy", "==", me.uid), limit(200));
+        const snap = await getDocs(q);
+
+        sessionsCache.clear();
+        const arr = [];
+        snap.forEach(d => { const s = { id: d.id, ...d.data() }; sessionsCache.set(d.id, s); arr.push(s); });
+        arr.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        arr.forEach(s => {
+            const o = document.createElement('option');
+            o.value = s.id;
+            let label = `${s.subject}`;
+            if (s.specialization) label += ` — ${s.specialization}`;
+            label += ` (${new Date(s.createdAt).toLocaleDateString('ar-EG')})`;
+            if (isSuper && s.createdByName) label += ` — ${s.createdByName}`;
+            o.textContent = label;
+            selector.appendChild(o);
+        });
+        if (keepValue && sessionsCache.has(keepValue)) selector.value = keepValue;
+    }
+
+    // ---------- الحضور ----------
+    function onSessionChange() {
+        viewedSessionId = $('session-selector').value || null;
+        const tools = $('session-tools');
+
+        if (!viewedSessionId) {
+            tools.classList.add('hidden');
+        } else {
+            tools.classList.remove('hidden');
+            const s = sessionsCache.get(viewedSessionId);
+            const live = s && s.active && Date.now() < s.expiresAt;
+            $('resume-btn').classList.toggle('hidden', !live);
+            $('delete-session-btn').classList.toggle('hidden', !isSuper);
+        }
+        loadAttendance();
     }
 
     function loadAttendance() {
-        const sessionId = $('session-selector').value;
         const tbody = $('attendance-list');
-        const exportBtn = $('export-btn');
-
         if (unsubscribeAttendance) { unsubscribeAttendance(); unsubscribeAttendance = null; }
-        tbody.replaceChildren();
         currentAttendanceData = [];
 
-        function messageRow(text) {
-            const tr = document.createElement('tr');
-            const td = document.createElement('td');
-            td.colSpan = 3; td.className = 'muted'; td.textContent = text;
-            tr.appendChild(td); tbody.appendChild(tr);
-        }
+        if (!viewedSessionId) { messageRow(tbody, 5, "اختر جلسة لعرض الحضور"); return; }
 
-        if (!sessionId) { messageRow("اختر جلسة لعرض الحضور"); exportBtn.style.display = 'none'; return; }
-
-        exportBtn.style.display = 'block';
-        const q = query(collection(db, "attendance"), where("sessionId", "==", sessionId));
+        const sid = viewedSessionId;
+        const q = query(collection(db, "attendance"), where("sessionId", "==", sid));
         unsubscribeAttendance = onSnapshot(q, (snapshot) => {
-            tbody.replaceChildren();
             currentAttendanceData = [];
+            if (snapshot.empty) { messageRow(tbody, 5, "لا يوجد حضور مسجل حتى الآن"); return; }
 
-            if (snapshot.empty) { messageRow("لا يوجد حضور مسجل حتى الآن"); return; }
+            const rows = snapshot.docs
+                .map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }))
+                .sort((a, b) => (toDate(a.timestamp)?.getTime() ?? 0) - (toDate(b.timestamp)?.getTime() ?? 0));
 
-            const rows = snapshot.docs.map(d => d.data())
-                .sort((a, b) => (a.timestamp?.toMillis?.() ?? 0) - (b.timestamp?.toMillis?.() ?? 0));
-
+            tbody.replaceChildren();
             rows.forEach((att, idx) => {
-                const timeStr = formatTime(att.timestamp);
-                currentAttendanceData.push({ index: idx + 1, name: att.studentName, time: timeStr });
+                const type = att.manual ? "يدوي" : "ذاتي";
+                const timeStr = fmtTime(att.timestamp);
+                currentAttendanceData.push({ index: idx + 1, name: att.studentName, type, time: timeStr });
 
                 const tr = document.createElement('tr');
-                [idx + 1, att.studentName, timeStr].forEach(val => {
-                    const td = document.createElement('td');
-                    td.textContent = val;   // textContent يمنع XSS
-                    tr.appendChild(td);
-                });
+                tr.appendChild(cell(idx + 1));
+                tr.appendChild(cell(att.studentName));
+                tr.appendChild(cell(type));
+                tr.appendChild(cell(timeStr));
+
+                const actions = document.createElement('td');
+                if (isSuper) {
+                    actions.appendChild(smallBtn("تعديل", "btn-warning", () => editAttendance(att)));
+                }
+                actions.appendChild(smallBtn("حذف", "btn-danger", () => deleteAttendance(att)));
+                tr.appendChild(actions);
                 tbody.appendChild(tr);
             });
-        }, (err) => { console.error(err); messageRow("تعذّر تحميل الحضور (تحقق من صلاحيات المشرف)."); });
+        }, (err) => {
+            console.error(err);
+            messageRow(tbody, 5, "تعذّر تحميل الحضور (تحقق من صلاحياتك).");
+        });
+    }
+
+    async function deleteAttendance(att) {
+        if (!confirm(`حذف حضور: ${att.studentName}؟`)) return;
+        try {
+            await deleteDoc(doc(db, "attendance", att.id));
+            logAction(`حذف حضور: ${att.studentName}`, att.sessionId);
+        } catch (e) { console.error(e); alert("تعذّر الحذف."); }
+    }
+
+    async function editAttendance(att) {
+        const name = prompt("الاسم الجديد:", att.studentName);
+        if (name === null) return;
+        const clean = name.trim().replace(/\s+/g, ' ');
+        if (clean.length < 2) { alert("الاسم قصير."); return; }
+        try {
+            await updateDoc(doc(db, "attendance", att.id), { studentName: clean });
+            logAction(`تعديل اسم: ${att.studentName} ← ${clean}`, att.sessionId);
+        } catch (e) { console.error(e); alert("تعذّر التعديل."); }
+    }
+
+    async function addManual() {
+        if (!viewedSessionId) return;
+        const name = $('manual-name').value.trim().replace(/\s+/g, ' ');
+        if (name.length < 2) { alert("اكتب اسم الطالب."); return; }
+
+        const id = `${viewedSessionId}_manual_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+        $('manual-add-btn').disabled = true;
+        try {
+            await setDoc(doc(db, "attendance", id), {
+                sessionId: viewedSessionId,
+                studentName: name,
+                timestamp: serverTimestamp(),
+                manual: true,
+                addedBy: me.uid
+            });
+            $('manual-name').value = "";
+            logAction(`إضافة يدوية: ${name}`, viewedSessionId);
+        } catch (e) {
+            console.error(e);
+            alert("تعذّرت الإضافة.");
+        } finally {
+            $('manual-add-btn').disabled = false;
+        }
+    }
+
+    async function deleteSession() {
+        if (!isSuper || !viewedSessionId) return;
+        const s = sessionsCache.get(viewedSessionId);
+        if (!confirm(`حذف الجلسة "${s ? s.subject : ''}" وكل سجلات حضورها نهائياً؟`)) return;
+        const sid = viewedSessionId;
+        try {
+            if (currentSessionId === sid) { stopQR(); $('qr-section').classList.add('hidden'); }
+            const att = await getDocs(query(collection(db, "attendance"), where("sessionId", "==", sid)));
+            for (const d of att.docs) await deleteDoc(d.ref);
+            await deleteDoc(doc(db, "sessions", sid, "private", "code")).catch(() => {});
+            await deleteDoc(doc(db, "sessions", sid));
+            logAction(`حذف جلسة: ${s ? s.subject : sid}`);
+            viewedSessionId = null;
+            await loadSessionsList();
+            $('session-selector').value = "";
+            onSessionChange();
+        } catch (e) {
+            console.error(e);
+            alert("تعذّر حذف الجلسة بالكامل.");
+        }
     }
 
     function csvSafe(value) {
@@ -277,22 +606,132 @@
 
     function exportToExcel() {
         if (currentAttendanceData.length === 0) return alert("لا توجد بيانات لتصديرها!");
-        let csv = "﻿م,اسم الطالب,وقت التسجيل\n";
-        currentAttendanceData.forEach(r => { csv += `${r.index},${csvSafe(r.name)},${csvSafe(r.time)}\n`; });
+        const s = sessionsCache.get(viewedSessionId);
+        let csv = "﻿م,اسم الطالب,النوع,وقت التسجيل\n";
+        currentAttendanceData.forEach(r => {
+            csv += `${r.index},${csvSafe(r.name)},${csvSafe(r.type)},${csvSafe(r.time)}\n`;
+        });
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `attendance_${Date.now()}.csv`;
+        a.download = `attendance_${(s ? s.subject : 'session').replace(/[^\w؀-ۿ]+/g, '_')}_${Date.now()}.csv`;
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
+    // ---------- السجل ----------
+    let viewedLogsUid = null;
+
+    async function loadLogs(uid, label) {
+        viewedLogsUid = uid;
+        $('logs-title').textContent = uid === me.uid ? "سجل نشاطي" : `سجل نشاط: ${label || uid}`;
+        const tbody = $('logs-list');
+        try {
+            const snap = await getDocs(query(collection(db, "admins", uid, "logs"), orderBy("timestamp", "desc"), limit(30)));
+            if (snap.empty) { messageRow(tbody, 2, "لا يوجد نشاط مسجل"); return; }
+            tbody.replaceChildren();
+            snap.forEach(d => {
+                const l = d.data({ serverTimestamps: 'estimate' });
+                const tr = document.createElement('tr');
+                tr.appendChild(cell(fmtTime(l.timestamp)));
+                tr.appendChild(cell(l.action));
+                tbody.appendChild(tr);
+            });
+        } catch (e) {
+            console.error(e);
+            messageRow(tbody, 2, "تعذّر تحميل السجل");
+        }
+    }
+
+    // ---------- إدارة المشرفين (مشرف عام) ----------
+    async function loadAdmins() {
+        const tbody = $('admins-list');
+        try {
+            const snap = await getDocs(collection(db, "admins"));
+            tbody.replaceChildren();
+            snap.forEach(d => {
+                const a = d.data();
+                const tr = document.createElement('tr');
+                tr.appendChild(cell(a.name || '-'));
+                tr.appendChild(cell(a.email || '-'));
+                tr.appendChild(cell(a.role === 'super' ? 'مشرف عام' : 'مشرف'));
+                tr.appendChild(cell(a.specialization || '-'));
+
+                const actions = document.createElement('td');
+                actions.appendChild(smallBtn("سجله", "", () => loadLogs(d.id, a.name || a.email)));
+                if (d.id !== me.uid) {
+                    actions.appendChild(smallBtn("إزالة", "btn-danger", () => removeAdmin(d.id, a)));
+                }
+                tr.appendChild(actions);
+                tbody.appendChild(tr);
+            });
+        } catch (e) {
+            console.error(e);
+            messageRow(tbody, 5, "تعذّر تحميل المشرفين");
+        }
+    }
+
+    async function removeAdmin(uid, a) {
+        if (!confirm(`إزالة صلاحية ${a.name || a.email}؟ سيبقى حسابه في Authentication لكنه لن يدخل اللوحة.`)) return;
+        try {
+            await deleteDoc(doc(db, "admins", uid));
+            logAction(`إزالة مشرف: ${a.name || a.email}`);
+            loadAdmins();
+        } catch (e) { console.error(e); alert("تعذّرت الإزالة."); }
+    }
+
+    async function addAdmin() {
+        const name = $('new-admin-name').value.trim();
+        const email = $('new-admin-email').value.trim();
+        const password = $('new-admin-pass').value;
+        const specialization = $('new-admin-spec').value;
+        const role = $('new-admin-role').value;
+
+        if (!name || !email || password.length < 6) { alert("أكمل الاسم والبريد وكلمة مرور من 6 أحرف على الأقل."); return; }
+
+        $('add-admin-btn').disabled = true;
+        try {
+            // تطبيق ثانوي حتى لا يتم تسجيل خروج المشرف العام
+            const secApp = initializeApp(firebaseConfig, 'secondary-' + Date.now());
+            const secAuth = getAuth(secApp);
+            const cred = await createUserWithEmailAndPassword(secAuth, email, password);
+            const newUid = cred.user.uid;
+            await signOut(secAuth);
+
+            await setDoc(doc(db, "admins", newUid), {
+                name, email, role, specialization, createdBy: me.uid
+            });
+
+            logAction(`إضافة مشرف: ${name}`);
+            ['new-admin-name', 'new-admin-email', 'new-admin-pass'].forEach(id => $(id).value = "");
+            alert("تم إنشاء المشرف. أعطه البريد وكلمة المرور.");
+            loadAdmins();
+        } catch (e) {
+            console.error(e);
+            if (e.code === 'auth/email-already-in-use') {
+                alert("هذا البريد مسجّل مسبقاً في Authentication. انسخ الـ UID الخاص به وأنشئ له مستنداً في admins يدوياً.");
+            } else if (e.code === 'auth/weak-password') {
+                alert("كلمة المرور ضعيفة.");
+            } else {
+                alert("تعذّر إنشاء المشرف: " + (e.code || e.message));
+            }
+        } finally {
+            $('add-admin-btn').disabled = false;
+        }
+    }
+
+    // ---------- ربط الأزرار ----------
     $('logout-btn').addEventListener('click', logoutAdmin);
+    $('save-profile-btn').addEventListener('click', saveProfile);
     $('create-btn').addEventListener('click', createSession);
     $('close-btn').addEventListener('click', closeSession);
-    $('session-selector').addEventListener('change', loadAttendance);
+    $('resume-btn').addEventListener('click', resumeQR);
+    $('session-selector').addEventListener('change', onSessionChange);
     $('export-btn').addEventListener('click', exportToExcel);
+    $('manual-add-btn').addEventListener('click', addManual);
+    $('delete-session-btn').addEventListener('click', deleteSession);
+    $('add-admin-btn').addEventListener('click', addAdmin);
 </script>
 
 </body>

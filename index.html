@@ -83,9 +83,8 @@
             }
 
             try {
-                await addDoc(collection(db, "admin_logs"), {
-                    adminEmail: cred.user.email,
-                    action: "تسجيل دخول ناجح",
+                await addDoc(collection(db, "admins", cred.user.uid, "logs"), {
+                    action: "تسجيل دخول",
                     timestamp: serverTimestamp()
                 });
             } catch (e) { console.warn("log failed", e); }
