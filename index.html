@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>تسجيل دخول المشرف</title>
+    <style>
+        :root { --primary:#4f46e5; --primary-hover:#4338ca; --bg:#f8fafc; --card-bg:#fff; --text:#1e293b; --gray:#64748b; }
+        body { font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:var(--bg); display:flex; justify-content:center; align-items:center; min-height:100vh; margin:0; color:var(--text); padding:15px; box-sizing:border-box; }
+        .card { background:var(--card-bg); padding:40px 30px; border-radius:16px; width:100%; max-width:400px; box-shadow:0 10px 25px -5px rgba(0,0,0,.05); text-align:center; }
+        .card h2 { margin-bottom:24px; color:var(--primary); font-size:24px; }
+        .input-group { text-align:right; margin-bottom:15px; }
+        .input-group label { display:block; margin-bottom:5px; font-size:14px; color:var(--gray); font-weight:600; }
+        input { width:100%; padding:12px 15px; font-size:15px; border-radius:8px; border:1px solid #cbd5e1; box-sizing:border-box; outline:none; }
+        input:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(79,70,229,.1); }
+        button { width:100%; padding:12px; margin-top:10px; font-size:16px; font-weight:600; border-radius:8px; border:none; background:var(--primary); color:#fff; cursor:pointer; }
+        button:hover { background:var(--primary-hover); }
+        button:disabled { opacity:.6; cursor:default; }
+        #msg { margin-top:15px; font-size:14px; font-weight:600; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>لوحة تحكم المشرفين</h2>
+    <div class="input-group">
+        <label for="email">البريد الإلكتروني</label>
+        <input type="email" id="email" placeholder="example@mnu.edu.eg" autocomplete="username">
+    </div>
+    <div class="input-group">
+        <label for="password">كلمة المرور</label>
+        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button id="login-btn">تسجيل الدخول</button>
+    <p id="msg"></p>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, collection, addDoc, doc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyAR_8fKmcHa3KDxt4AIt2ZMQ59UDMrZlDE",
+        authDomain: "mnu-attendance.firebaseapp.com",
+        databaseURL: "https://mnu-attendance-default-rtdb.firebaseio.com",
+        projectId: "mnu-attendance",
+        storageBucket: "mnu-attendance.firebasestorage.app",
+        messagingSenderId: "768022025822",
+        appId: "1:768022025822:web:af7c6dc6a36bc07adf06cf",
+        measurementId: "G-R955LS94GJ"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const msg = document.getElementById('msg');
+    const btn = document.getElementById('login-btn');
+
+    function show(text, ok) {
+        msg.style.color = ok ? "#16a34a" : "#dc2626";
+        msg.textContent = text;
+    }
+
+    async function loginAdmin() {
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+
+        if (!email || !password) { show("الرجاء إدخال البريد وكلمة المرور!", false); return; }
+
+        btn.disabled = true;
+        try {
+            const cred = await signInWithEmailAndPassword(auth, email, password);
+
+            // التحقق من أن المستخدم مشرف فعلًا
+            const adminSnap = await getDoc(doc(db, "admins", cred.user.uid));
+            if (!adminSnap.exists()) {
+                await signOut(auth);
+                show("هذا الحساب ليس لديه صلاحية مشرف.", false);
+                btn.disabled = false;
+                return;
+            }
+
+            try {
+                await addDoc(collection(db, "admin_logs"), {
+                    adminEmail: cred.user.email,
+                    action: "تسجيل دخول ناجح",
+                    timestamp: serverTimestamp()
+                });
+            } catch (e) { console.warn("log failed", e); }
+
+            show("تم تسجيل الدخول بنجاح، جاري التحويل...", true);
+            setTimeout(() => { window.location.href = "admin.html"; }, 600);
+
+        } catch (error) {
+            console.error(error);
+            show("خطأ في البريد أو كلمة المرور!", false);
+            btn.disabled = false;
+        }
+    }
+
+    btn.addEventListener('click', loginAdmin);
+    document.getElementById('password').addEventListener('keydown', (e) => { if (e.key === 'Enter') loginAdmin(); });
+</script>
+
+</body>
+</html>
