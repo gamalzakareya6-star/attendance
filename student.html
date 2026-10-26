@@ -5,10 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#4f46e5">
     <title>تسجيل الحضور</title>
-    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
-    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js">
-    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js">
-    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js">
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+    <link rel="dns-prefetch" href="https://securetoken.googleapis.com">
     <style>
         :root { --primary:#4f46e5; --primary-soft:#eef2ff; --success:#16a34a; --success-soft:#dcfce7; --danger:#dc2626; --danger-soft:#fee2e2; --warning:#d97706; --warning-soft:#fef3c7; --bg:#f1f5f9; --card:#fff; --text:#0f172a; --gray:#64748b; --border:#e2e8f0; --input:#f8fafc; }
         @media (prefers-color-scheme: dark) {
@@ -19,10 +18,10 @@
         .card { background:var(--card); border:1px solid var(--border); border-radius:20px; width:100%; max-width:420px; padding:28px 22px; text-align:center; box-shadow:0 12px 30px -14px rgba(15,23,42,.25); }
         .logo { width:64px; height:64px; margin:0 auto 12px; border-radius:20px; background:var(--primary-soft); display:grid; place-items:center; font-size:32px; }
         h1 { font-size:20px; margin:0 0 6px; }
-        .subject { display:inline-block; background:var(--primary-soft); color:var(--primary); font-weight:700; padding:6px 16px; border-radius:30px; margin:6px 0 18px; font-size:15px; }
-        .status { color:var(--gray); font-weight:600; min-height:24px; }
-        .spinner { width:28px; height:28px; border:3px solid var(--border); border-top-color:var(--primary); border-radius:50%; margin:14px auto; animation:spin .8s linear infinite; }
-        @keyframes spin { to { transform:rotate(360deg); } }
+        .subject { display:inline-block; background:var(--primary-soft); color:var(--primary); font-weight:700; padding:6px 16px; border-radius:30px; margin:6px 0 18px; font-size:15px; min-height:32px; }
+        .subject.wait { color:transparent; width:150px; animation:pulse 1s infinite; }
+        @keyframes pulse { 50% { opacity:.4; } }
+        .status { color:var(--gray); font-weight:600; }
         label { display:block; text-align:right; font-size:14px; color:var(--gray); font-weight:600; margin-bottom:6px; }
         input { width:100%; min-height:54px; padding:12px 16px; font-size:18px; border-radius:14px; border:1.5px solid var(--border); background:var(--input); color:var(--text); outline:none; font-family:inherit; }
         input:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); }
@@ -44,11 +43,9 @@
 <div class="card">
     <div class="logo">📋</div>
     <h1>تسجيل الحضور</h1>
+    <div class="subject wait" id="subject">...</div>
 
-    <div id="loading"><div class="spinner"></div><div class="status">جاري التحقق...</div></div>
-    <div class="subject hidden" id="subject"></div>
-
-    <div id="form-container" class="hidden">
+    <div id="form-container">
         <label for="student-name">اكتب اسمك الثلاثي</label>
         <input type="text" id="student-name" placeholder="مثال: جمال زكريا السيد" maxlength="80" autocomplete="name" enterkeyhint="done">
         <button id="submit-btn">تأكيد الحضور</button>
@@ -62,115 +59,194 @@
     <div class="msg" id="msg"></div>
 </div>
 
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+<!-- بدون مكتبة Firebase: طلبات fetch مباشرة إلى واجهات Google (REST) -->
+<script>
+(function () {
+    "use strict";
 
-    const firebaseConfig = {
-        apiKey: "AIzaSyAR_8fKmcHa3KDxt4AIt2ZMQ59UDMrZlDE",
-        authDomain: "mnu-attendance.firebaseapp.com",
-        databaseURL: "https://mnu-attendance-default-rtdb.firebaseio.com",
-        projectId: "mnu-attendance",
-        storageBucket: "mnu-attendance.firebasestorage.app",
-        messagingSenderId: "768022025822",
-        appId: "1:768022025822:web:af7c6dc6a36bc07adf06cf",
-        measurementId: "G-R955LS94GJ"
-    };
+    var API_KEY = "AIzaSyAR_8fKmcHa3KDxt4AIt2ZMQ59UDMrZlDE";
+    var PROJECT = "mnu-attendance";
+    var DOCS = "https://firestore.googleapis.com/v1/projects/" + PROJECT + "/databases/(default)/documents";
+    var AUTH_KEY = "att_auth_v1";
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+    var params = new URLSearchParams(location.search);
+    var sessionId = params.get("session");
+    var token = params.get("token");
 
-    const params = new URLSearchParams(window.location.search);
-    const sessionId = params.get('session');
-    const token = params.get('token');
+    var $ = function (id) { return document.getElementById(id); };
+    var btn = $("submit-btn");
 
-    const $ = (id) => document.getElementById(id);
-    const btn = $('submit-btn');
+    function show(text, kind) { var m = $("msg"); m.textContent = text; m.className = "msg show " + kind; }
+    function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+    function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+    function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
 
-    function show(text, kind) {
-        const m = $('msg');
-        m.textContent = text;
-        m.className = 'msg show ' + kind;
-    }
-    function fail(text) {
-        $('loading').classList.add('hidden');
-        show(text, 'err');
+    function fatal(text) {
+        $("form-container").classList.add("hidden");
+        $("subject").classList.add("hidden");
+        show(text, "err");
     }
 
-    // تسجيل الدخول المجهول وقراءة الجلسة بالتوازي لتقليل الانتظار
-    const authReady = signInAnonymously(auth);
+    // ---------- الدخول المجهول (مع تخزين الجلسة لتجنّب طلب جديد) ----------
+    function saveAuth(o) {
+        var a = { idToken: o.idToken, refresh: o.refresh, uid: o.uid, exp: Date.now() + Number(o.expiresIn || 3600) * 1000 };
+        lsSet(AUTH_KEY, JSON.stringify(a));
+        return a;
+    }
 
-    async function init() {
-        if (!sessionId || !token) return fail("رابط غير صالح. امسح الـ QR من الشاشة مرة أخرى.");
+    function getAuth(forceNew) {
+        var c = null;
+        if (!forceNew) { try { c = JSON.parse(lsGet(AUTH_KEY) || "null"); } catch (e) {} }
 
-        try {
-            const sessionSnap = await getDoc(doc(db, "sessions", sessionId));
-            if (!sessionSnap.exists()) return fail("هذه الجلسة غير موجودة.");
+        if (c && c.exp > Date.now() + 60000) return Promise.resolve(c);          // صالح: لا طلب شبكة
 
-            const s = sessionSnap.data();
-            if (!s.active || Date.now() > s.expiresAt) return fail("انتهت جلسة الحضور أو أُغلقت.");
-
-            // أظهر النموذج فوراً
-            $('loading').classList.add('hidden');
-            $('subject').textContent = s.subject + (s.specialization ? ' — ' + s.specialization : '');
-            $('subject').classList.remove('hidden');
-            $('form-container').classList.remove('hidden');
-
-            try { const saved = localStorage.getItem('student_name'); if (saved) $('student-name').value = saved; } catch (e) {}
-            if (!$('student-name').value) $('student-name').focus();
-
-            // هل سجّل هذا الجهاز مسبقاً؟
-            await authReady;
-            const prev = await getDoc(doc(db, "attendance", `${sessionId}_${auth.currentUser.uid}`));
-            if (prev.exists()) {
-                $('form-container').classList.add('hidden');
-                $('success').classList.remove('hidden');
-                show("سجّلت حضورك مسبقاً في هذه الجلسة", 'warn');
-            }
-        } catch (e) {
-            console.error(e);
-            fail("تعذّر الاتصال. تأكد من الإنترنت وأعد مسح الرمز.");
+        function signUp() {
+            return fetch("https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" + API_KEY, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ returnSecureToken: true })
+            }).then(function (r) {
+                if (!r.ok) throw new Error("auth");
+                return r.json();
+            }).then(function (j) {
+                return saveAuth({ idToken: j.idToken, refresh: j.refreshToken, uid: j.localId, expiresIn: j.expiresIn });
+            });
         }
+
+        if (c && c.refresh) {                                                      // منتهٍ: جدّده بنفس الـ UID
+            return fetch("https://securetoken.googleapis.com/v1/token?key=" + API_KEY, {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: "grant_type=refresh_token&refresh_token=" + encodeURIComponent(c.refresh)
+            }).then(function (r) {
+                if (!r.ok) throw new Error("refresh");
+                return r.json();
+            }).then(function (j) {
+                return saveAuth({ idToken: j.id_token, refresh: j.refresh_token, uid: j.user_id, expiresIn: j.expires_in });
+            }).catch(signUp);
+        }
+        return signUp();
     }
 
-    async function submitAttendance() {
-        const studentName = $('student-name').value.trim().replace(/\s+/g, ' ');
-        if (studentName.split(' ').length < 3 || studentName.length < 6) {
-            show("اكتب اسمك الثلاثي بشكل صحيح", 'err');
-            return;
-        }
+    // ---------- ابدأ كل شيء فوراً وبالتوازي ----------
+    var authP = getAuth(false);
+    authP.catch(function () {});
+
+    var sessionP = (!sessionId || !token) ? Promise.resolve(null) :
+        fetch(DOCS + "/sessions/" + encodeURIComponent(sessionId) + "?key=" + API_KEY)   // القراءة مسموحة بدون تسجيل دخول
+            .then(function (r) { return r.status === 404 ? { missing: true } : r.json(); });
+
+    function num(f) { return f ? Number(f.integerValue != null ? f.integerValue : f.doubleValue) : 0; }
+
+    if (!sessionId || !token) {
+        fatal("رابط غير صالح. امسح الـ QR من الشاشة مرة أخرى.");
+    } else {
+        try { var saved = lsGet("student_name"); if (saved) $("student-name").value = saved; } catch (e) {}
+        if (!$("student-name").value) $("student-name").focus();
+
+        // النموذج ظاهر من اللحظة الأولى؛ نتحقق من الجلسة في الخلفية
+        sessionP.then(function (j) {
+            if (!j || j.missing || !j.fields) { fatal("هذه الجلسة غير موجودة."); return; }
+            var f = j.fields;
+            var active = f.active && f.active.booleanValue === true;
+            if (!active || Date.now() > num(f.expiresAt)) { fatal("انتهت جلسة الحضور أو أُغلقت."); return; }
+
+            var s = $("subject");
+            s.classList.remove("wait");
+            s.textContent = (f.subject ? f.subject.stringValue : "") + (f.specialization && f.specialization.stringValue ? " — " + f.specialization.stringValue : "");
+
+            // هل سجّل هذا الجهاز مسبقاً؟ (لا يؤخر شيئاً)
+            return authP.then(function (a) {
+                return fetch(DOCS + "/attendance/" + encodeURIComponent(sessionId + "_" + a.uid) + "?key=" + API_KEY, {
+                    headers: { Authorization: "Bearer " + a.idToken }
+                });
+            }).then(function (r) {
+                if (r && r.status === 200) {
+                    $("form-container").classList.add("hidden");
+                    $("success").classList.remove("hidden");
+                    show("سجّلت حضورك مسبقاً في هذه الجلسة", "warn");
+                }
+            });
+        }).catch(function () {
+            fatal("تعذّر الاتصال. تأكد من الإنترنت وأعد مسح الرمز.");
+        });
+    }
+
+    // ---------- تسجيل الحضور: طلب واحد (commit) ----------
+    function commit(a, name) {
+        var docName = "projects/" + PROJECT + "/databases/(default)/documents/attendance/" + sessionId + "_" + a.uid;
+        return fetch("https://firestore.googleapis.com/v1/projects/" + PROJECT + "/databases/(default)/documents:commit?key=" + API_KEY, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + a.idToken },
+            body: JSON.stringify({
+                writes: [{
+                    update: {
+                        name: docName,
+                        fields: {
+                            sessionId: { stringValue: sessionId },
+                            studentName: { stringValue: name },
+                            token: { stringValue: token }
+                        }
+                    },
+                    updateTransforms: [{ fieldPath: "timestamp", setToServerValue: "REQUEST_TIME" }],
+                    currentDocument: { exists: false }      // يمنع التسجيل المكرر
+                }]
+            })
+        });
+    }
+
+    function submit() {
+        var name = $("student-name").value.trim().replace(/\s+/g, " ");
+        if (name.split(" ").length < 3 || name.length < 6) { show("اكتب اسمك الثلاثي بشكل صحيح", "err"); return; }
 
         btn.disabled = true;
         btn.textContent = "جاري التسجيل...";
-        try {
-            await authReady;
-            const uid = auth.currentUser.uid;
-            await setDoc(doc(db, "attendance", `${sessionId}_${uid}`), {
-                sessionId, studentName, token, timestamp: serverTimestamp()
-            });
 
-            try { localStorage.setItem('student_name', studentName); } catch (e) {}
-            $('msg').className = 'msg';
-            $('form-container').classList.add('hidden');
-            $('success').classList.remove('hidden');
+        function done() {
+            lsSet("student_name", name);
+            $("msg").className = "msg";
+            $("form-container").classList.add("hidden");
+            $("success").classList.remove("hidden");
             if (navigator.vibrate) navigator.vibrate(60);
-        } catch (error) {
-            console.error(error);
-            if (error.code === 'permission-denied') {
-                show("الرمز انتهى أو الجلسة أُغلقت، أو سجّلت مسبقاً. امسح الرمز الظاهر حالياً على الشاشة.", 'err');
-            } else {
-                show("حدث خطأ أثناء التسجيل، حاول مرة أخرى.", 'err');
-            }
-            btn.disabled = false;
-            btn.textContent = "تأكيد الحضور";
         }
+        function reset() { btn.disabled = false; btn.textContent = "تأكيد الحضور"; }
+
+        function attempt(retried) {
+            return authP.then(function (a) {
+                return commit(a, name).then(function (r) {
+                    if (r.ok) { done(); return; }
+                    if (r.status === 401 && !retried) {                   // انتهى التوكن: جدّد وأعد المحاولة مرة
+                        lsDel(AUTH_KEY);
+                        authP = getAuth(true);
+                        return attempt(true);
+                    }
+                    return r.json().catch(function () { return {}; }).then(function (j) {
+                        var st = j && j.error && j.error.status;
+                        if (st === "ALREADY_EXISTS" || r.status === 409) {
+                            $("form-container").classList.add("hidden");
+                            $("success").classList.remove("hidden");
+                            show("سجّلت حضورك مسبقاً في هذه الجلسة", "warn");
+                        } else if (st === "PERMISSION_DENIED" || r.status === 403) {
+                            show("الرمز انتهى أو الجلسة أُغلقت. امسح الرمز الظاهر حالياً على الشاشة.", "err");
+                            reset();
+                        } else {
+                            show("حدث خطأ أثناء التسجيل، حاول مرة أخرى.", "err");
+                            reset();
+                        }
+                    });
+                });
+            });
+        }
+
+        attempt(false).catch(function () {
+            show("تعذّر الاتصال. تأكد من الإنترنت وحاول مرة أخرى.", "err");
+            reset();
+        });
     }
 
-    btn.addEventListener('click', submitAttendance);
-    $('student-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitAttendance(); });
-    init();
+    btn.addEventListener("click", submit);
+    $("student-name").addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
+})();
 </script>
 
 </body>
