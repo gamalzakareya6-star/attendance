@@ -2,38 +2,64 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>تسجيل الحضور الآمن</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#4f46e5">
+    <title>تسجيل الحضور</title>
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js">
     <style>
-        :root { --primary:#4f46e5; --success:#16a34a; --danger:#dc2626; --warning:#d97706; --bg:#f8fafc; --card-bg:#fff; --text:#1e293b; --gray:#64748b; }
-        body { font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:var(--bg); display:flex; justify-content:center; align-items:center; min-height:100vh; margin:0; color:var(--text); padding:15px; box-sizing:border-box; }
-        .card { background:var(--card-bg); padding:40px 30px; border-radius:16px; width:100%; max-width:400px; box-shadow:0 10px 25px -5px rgba(0,0,0,.05); text-align:center; }
-        .card h2 { margin-top:0; color:var(--primary); font-size:22px; }
-        #session-info { color:var(--gray); font-size:15px; margin-bottom:25px; font-weight:600; }
-        .input-group { text-align:right; margin-bottom:15px; }
-        .input-group label { display:block; margin-bottom:5px; font-size:14px; color:var(--gray); font-weight:600; }
-        input[type="text"] { width:100%; padding:12px 15px; font-size:15px; border-radius:8px; border:1px solid #cbd5e1; box-sizing:border-box; outline:none; }
-        input[type="text"]:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(79,70,229,.1); }
-        button { width:100%; padding:12px; margin-top:10px; font-size:16px; font-weight:600; border-radius:8px; border:none; background:var(--success); color:#fff; cursor:pointer; }
-        button:hover { background:#15803d; }
-        button:disabled { opacity:.6; cursor:default; }
-        #msg { margin-top:20px; font-size:15px; font-weight:600; }
+        :root { --primary:#4f46e5; --primary-soft:#eef2ff; --success:#16a34a; --success-soft:#dcfce7; --danger:#dc2626; --danger-soft:#fee2e2; --warning:#d97706; --warning-soft:#fef3c7; --bg:#f1f5f9; --card:#fff; --text:#0f172a; --gray:#64748b; --border:#e2e8f0; --input:#f8fafc; }
+        @media (prefers-color-scheme: dark) {
+            :root { --primary:#818cf8; --primary-soft:#1e1b4b; --success:#4ade80; --success-soft:#052e16; --danger:#f87171; --danger-soft:#450a0a; --warning:#fbbf24; --warning-soft:#451a03; --bg:#0b1020; --card:#151b2e; --text:#e5e7eb; --gray:#94a3b8; --border:#27304a; --input:#0f1424; }
+        }
+        * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+        body { font-family:system-ui,'Segoe UI',Tahoma,Arial,sans-serif; background:var(--bg); color:var(--text); margin:0; min-height:100vh; min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:16px; font-size:17px; }
+        .card { background:var(--card); border:1px solid var(--border); border-radius:20px; width:100%; max-width:420px; padding:28px 22px; text-align:center; box-shadow:0 12px 30px -14px rgba(15,23,42,.25); }
+        .logo { width:64px; height:64px; margin:0 auto 12px; border-radius:20px; background:var(--primary-soft); display:grid; place-items:center; font-size:32px; }
+        h1 { font-size:20px; margin:0 0 6px; }
+        .subject { display:inline-block; background:var(--primary-soft); color:var(--primary); font-weight:700; padding:6px 16px; border-radius:30px; margin:6px 0 18px; font-size:15px; }
+        .status { color:var(--gray); font-weight:600; min-height:24px; }
+        .spinner { width:28px; height:28px; border:3px solid var(--border); border-top-color:var(--primary); border-radius:50%; margin:14px auto; animation:spin .8s linear infinite; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        label { display:block; text-align:right; font-size:14px; color:var(--gray); font-weight:600; margin-bottom:6px; }
+        input { width:100%; min-height:54px; padding:12px 16px; font-size:18px; border-radius:14px; border:1.5px solid var(--border); background:var(--input); color:var(--text); outline:none; font-family:inherit; }
+        input:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); }
+        button { width:100%; min-height:56px; margin-top:14px; font-size:18px; font-weight:800; border-radius:14px; border:none; background:var(--success); color:#052e16; cursor:pointer; font-family:inherit; }
+        button:active { transform:scale(.98); }
+        button:disabled { opacity:.55; }
+        .msg { margin-top:16px; padding:12px 14px; border-radius:12px; font-weight:700; font-size:15px; display:none; }
+        .msg.show { display:block; }
+        .msg.ok { background:var(--success-soft); color:var(--success); }
+        .msg.err { background:var(--danger-soft); color:var(--danger); }
+        .msg.warn { background:var(--warning-soft); color:var(--warning); }
+        .done { font-size:64px; animation:pop .4s ease; }
+        @keyframes pop { from { transform:scale(.3); opacity:0; } to { transform:scale(1); opacity:1; } }
+        .hidden { display:none !important; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>تسجيل الحضور الآمن</h2>
-    <p id="session-info">جاري التحقق من الجلسة...</p>
+    <div class="logo">📋</div>
+    <h1>تسجيل الحضور</h1>
 
-    <div id="form-container" style="display:none;">
-        <div class="input-group">
-            <label for="student-name">اكتب اسمك الثلاثي:</label>
-            <input type="text" id="student-name" placeholder="مثال: جمال زكريا السيد" maxlength="80" autocomplete="name">
-        </div>
+    <div id="loading"><div class="spinner"></div><div class="status">جاري التحقق...</div></div>
+    <div class="subject hidden" id="subject"></div>
+
+    <div id="form-container" class="hidden">
+        <label for="student-name">اكتب اسمك الثلاثي</label>
+        <input type="text" id="student-name" placeholder="مثال: جمال زكريا السيد" maxlength="80" autocomplete="name" enterkeyhint="done">
         <button id="submit-btn">تأكيد الحضور</button>
     </div>
-    <p id="msg"></p>
+
+    <div id="success" class="hidden">
+        <div class="done">✅</div>
+        <div class="status" style="color:var(--success); font-size:18px;">تم تسجيل حضورك</div>
+    </div>
+
+    <div class="msg" id="msg"></div>
 </div>
 
 <script type="module">
@@ -60,80 +86,91 @@
     const sessionId = params.get('session');
     const token = params.get('token');
 
-    const info = document.getElementById('session-info');
-    const msg = document.getElementById('msg');
-    const btn = document.getElementById('submit-btn');
+    const $ = (id) => document.getElementById(id);
+    const btn = $('submit-btn');
 
-    function show(text, color) { msg.style.color = color; msg.textContent = text; }
+    function show(text, kind) {
+        const m = $('msg');
+        m.textContent = text;
+        m.className = 'msg show ' + kind;
+    }
+    function fail(text) {
+        $('loading').classList.add('hidden');
+        show(text, 'err');
+    }
 
-    async function initPage() {
-        if (!sessionId || !token) {
-            info.textContent = "خطأ: رابط الـ QR غير صالح. امسح الرمز من الشاشة مرة أخرى.";
-            return;
-        }
+    // تسجيل الدخول المجهول وقراءة الجلسة بالتوازي لتقليل الانتظار
+    const authReady = signInAnonymously(auth);
+
+    async function init() {
+        if (!sessionId || !token) return fail("رابط غير صالح. امسح الـ QR من الشاشة مرة أخرى.");
+
         try {
-            await signInAnonymously(auth);
-
             const sessionSnap = await getDoc(doc(db, "sessions", sessionId));
-            if (!sessionSnap.exists()) { info.textContent = "هذه الجلسة غير موجودة."; return; }
+            if (!sessionSnap.exists()) return fail("هذه الجلسة غير موجودة.");
 
             const s = sessionSnap.data();
-            if (!s.active || Date.now() > s.expiresAt) {
-                info.textContent = "عذراً، انتهت جلسة الحضور أو تم إغلاقها.";
-                return;
-            }
+            if (!s.active || Date.now() > s.expiresAt) return fail("انتهت جلسة الحضور أو أُغلقت.");
+
+            // أظهر النموذج فوراً
+            $('loading').classList.add('hidden');
+            $('subject').textContent = s.subject + (s.specialization ? ' — ' + s.specialization : '');
+            $('subject').classList.remove('hidden');
+            $('form-container').classList.remove('hidden');
+
+            try { const saved = localStorage.getItem('student_name'); if (saved) $('student-name').value = saved; } catch (e) {}
+            if (!$('student-name').value) $('student-name').focus();
 
             // هل سجّل هذا الجهاز مسبقاً؟
+            await authReady;
             const prev = await getDoc(doc(db, "attendance", `${sessionId}_${auth.currentUser.uid}`));
             if (prev.exists()) {
-                info.textContent = `المادة: ${s.subject}${s.specialization ? ' — ' + s.specialization : ''}`;
-                show("لقد قمت بتسجيل الحضور مسبقاً من هذا الجهاز ✅", "var(--warning)");
-                return;
+                $('form-container').classList.add('hidden');
+                $('success').classList.remove('hidden');
+                show("سجّلت حضورك مسبقاً في هذه الجلسة", 'warn');
             }
-
-            info.textContent = `المادة: ${s.subject}${s.specialization ? ' — ' + s.specialization : ''}`;
-            document.getElementById('form-container').style.display = 'block';
         } catch (e) {
             console.error(e);
-            info.textContent = "تعذّر الاتصال. تأكد من الإنترنت وأعد مسح الرمز.";
+            fail("تعذّر الاتصال. تأكد من الإنترنت وأعد مسح الرمز.");
         }
     }
 
     async function submitAttendance() {
-        const studentName = document.getElementById('student-name').value.trim().replace(/\s+/g, ' ');
-
+        const studentName = $('student-name').value.trim().replace(/\s+/g, ' ');
         if (studentName.split(' ').length < 3 || studentName.length < 6) {
-            show("الرجاء كتابة اسمك الثلاثي بشكل صحيح!", "var(--danger)");
+            show("اكتب اسمك الثلاثي بشكل صحيح", 'err');
             return;
         }
 
         btn.disabled = true;
+        btn.textContent = "جاري التسجيل...";
         try {
+            await authReady;
             const uid = auth.currentUser.uid;
-            // التحقق من صحة التوكن يتم في قواعد Firestore على الخادم
             await setDoc(doc(db, "attendance", `${sessionId}_${uid}`), {
-                sessionId: sessionId,
-                studentName: studentName,
-                token: token,
-                timestamp: serverTimestamp()
+                sessionId, studentName, token, timestamp: serverTimestamp()
             });
 
-            show("تم تسجيل حضورك بنجاح! ✅", "var(--success)");
-            document.getElementById('form-container').style.display = 'none';
-
+            try { localStorage.setItem('student_name', studentName); } catch (e) {}
+            $('msg').className = 'msg';
+            $('form-container').classList.add('hidden');
+            $('success').classList.remove('hidden');
+            if (navigator.vibrate) navigator.vibrate(60);
         } catch (error) {
             console.error(error);
             if (error.code === 'permission-denied') {
-                show("الرمز منتهي أو الجلسة مغلقة، أو سجّلت مسبقاً. امسح الرمز الظاهر حالياً على الشاشة.", "var(--danger)");
+                show("الرمز انتهى أو الجلسة أُغلقت، أو سجّلت مسبقاً. امسح الرمز الظاهر حالياً على الشاشة.", 'err');
             } else {
-                show("حدث خطأ أثناء التسجيل، حاول مرة أخرى.", "var(--danger)");
+                show("حدث خطأ أثناء التسجيل، حاول مرة أخرى.", 'err');
             }
             btn.disabled = false;
+            btn.textContent = "تأكيد الحضور";
         }
     }
 
     btn.addEventListener('click', submitAttendance);
-    initPage();
+    $('student-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitAttendance(); });
+    init();
 </script>
 
 </body>

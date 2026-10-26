@@ -2,42 +2,56 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#4f46e5">
     <title>تسجيل دخول المشرف</title>
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js">
     <style>
-        :root { --primary:#4f46e5; --primary-hover:#4338ca; --bg:#f8fafc; --card-bg:#fff; --text:#1e293b; --gray:#64748b; }
-        body { font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:var(--bg); display:flex; justify-content:center; align-items:center; min-height:100vh; margin:0; color:var(--text); padding:15px; box-sizing:border-box; }
-        .card { background:var(--card-bg); padding:40px 30px; border-radius:16px; width:100%; max-width:400px; box-shadow:0 10px 25px -5px rgba(0,0,0,.05); text-align:center; }
-        .card h2 { margin-bottom:24px; color:var(--primary); font-size:24px; }
-        .input-group { text-align:right; margin-bottom:15px; }
-        .input-group label { display:block; margin-bottom:5px; font-size:14px; color:var(--gray); font-weight:600; }
-        input { width:100%; padding:12px 15px; font-size:15px; border-radius:8px; border:1px solid #cbd5e1; box-sizing:border-box; outline:none; }
-        input:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(79,70,229,.1); }
-        button { width:100%; padding:12px; margin-top:10px; font-size:16px; font-weight:600; border-radius:8px; border:none; background:var(--primary); color:#fff; cursor:pointer; }
+        :root { --primary:#4f46e5; --primary-soft:#eef2ff; --primary-hover:#4338ca; --success:#16a34a; --danger:#dc2626; --bg:#f1f5f9; --card:#fff; --text:#0f172a; --gray:#64748b; --border:#e2e8f0; --input:#f8fafc; }
+        @media (prefers-color-scheme: dark) {
+            :root { --primary:#818cf8; --primary-soft:#1e1b4b; --primary-hover:#6366f1; --success:#4ade80; --danger:#f87171; --bg:#0b1020; --card:#151b2e; --text:#e5e7eb; --gray:#94a3b8; --border:#27304a; --input:#0f1424; }
+        }
+        * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+        body { font-family:system-ui,'Segoe UI',Tahoma,Arial,sans-serif; background:var(--bg); color:var(--text); margin:0; min-height:100vh; min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:16px; font-size:16px; }
+        .card { background:var(--card); border:1px solid var(--border); border-radius:20px; width:100%; max-width:400px; padding:32px 24px; box-shadow:0 12px 30px -14px rgba(15,23,42,.25); }
+        .logo { width:64px; height:64px; margin:0 auto 14px; border-radius:20px; background:var(--primary-soft); display:grid; place-items:center; font-size:32px; }
+        h2 { text-align:center; margin:0 0 24px; font-size:22px; }
+        label { display:block; margin-bottom:6px; font-size:14px; color:var(--gray); font-weight:600; }
+        .field { margin-bottom:16px; position:relative; }
+        input { width:100%; min-height:52px; padding:12px 16px; font-size:16px; border-radius:14px; border:1.5px solid var(--border); background:var(--input); color:var(--text); outline:none; font-family:inherit; }
+        input:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); }
+        .eye { position:absolute; left:6px; bottom:6px; width:40px; height:40px; min-height:0; margin:0; padding:0; background:transparent; font-size:18px; border-radius:10px; }
+        button { width:100%; min-height:54px; margin-top:6px; font-size:17px; font-weight:800; border-radius:14px; border:none; background:var(--primary); color:#fff; cursor:pointer; font-family:inherit; }
         button:hover { background:var(--primary-hover); }
-        button:disabled { opacity:.6; cursor:default; }
-        #msg { margin-top:15px; font-size:14px; font-weight:600; }
+        button:active { transform:scale(.98); }
+        button:disabled { opacity:.6; }
+        #msg { margin-top:14px; font-size:14px; font-weight:700; text-align:center; min-height:20px; }
     </style>
 </head>
 <body>
 
-<div class="card">
+<form class="card" id="form" autocomplete="on">
+    <div class="logo">🎓</div>
     <h2>لوحة تحكم المشرفين</h2>
-    <div class="input-group">
+    <div class="field">
         <label for="email">البريد الإلكتروني</label>
-        <input type="email" id="email" placeholder="example@mnu.edu.eg" autocomplete="username">
+        <input type="email" id="email" placeholder="example@mnu.edu.eg" autocomplete="username" inputmode="email" required>
     </div>
-    <div class="input-group">
+    <div class="field">
         <label for="password">كلمة المرور</label>
-        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
+        <button type="button" class="eye" id="eye" aria-label="إظهار كلمة المرور">👁</button>
     </div>
-    <button id="login-btn">تسجيل الدخول</button>
+    <button type="submit" id="login-btn">تسجيل الدخول</button>
     <p id="msg"></p>
-</div>
+</form>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, doc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -55,52 +69,66 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    const msg = document.getElementById('msg');
-    const btn = document.getElementById('login-btn');
+    const $ = (id) => document.getElementById(id);
+    const btn = $('login-btn');
+    let loggingIn = false;
 
     function show(text, ok) {
-        msg.style.color = ok ? "#16a34a" : "#dc2626";
-        msg.textContent = text;
+        $('msg').style.color = ok ? "var(--success)" : "var(--danger)";
+        $('msg').textContent = text;
     }
 
-    async function loginAdmin() {
-        const email = document.getElementById('email').value.trim();
-        const password = document.getElementById('password').value;
+    try { const e = localStorage.getItem('admin_email'); if (e) { $('email').value = e; $('password').focus(); } } catch (e) {}
 
-        if (!email || !password) { show("الرجاء إدخال البريد وكلمة المرور!", false); return; }
+    // لو كان المشرف مسجّلاً من قبل: ادخل مباشرة دون كتابة شيء
+    onAuthStateChanged(auth, async (user) => {
+        if (!user || user.isAnonymous || loggingIn) return;
+        try {
+            const snap = await getDoc(doc(db, "admins", user.uid));
+            if (snap.exists()) window.location.replace("admin.html");
+        } catch (e) { /* يبقى في صفحة الدخول */ }
+    });
 
+    $('eye').addEventListener('click', () => {
+        const p = $('password');
+        p.type = p.type === 'password' ? 'text' : 'password';
+    });
+
+    $('form').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const email = $('email').value.trim();
+        const password = $('password').value;
+        if (!email || !password) return show("أدخل البريد وكلمة المرور", false);
+
+        loggingIn = true;
         btn.disabled = true;
+        btn.textContent = "جاري الدخول...";
+        show("", true);
+
         try {
             const cred = await signInWithEmailAndPassword(auth, email, password);
-
-            // التحقق من أن المستخدم مشرف فعلًا
             const adminSnap = await getDoc(doc(db, "admins", cred.user.uid));
             if (!adminSnap.exists()) {
                 await signOut(auth);
                 show("هذا الحساب ليس لديه صلاحية مشرف.", false);
-                btn.disabled = false;
+                loggingIn = false; btn.disabled = false; btn.textContent = "تسجيل الدخول";
                 return;
             }
 
-            try {
-                await addDoc(collection(db, "admins", cred.user.uid, "logs"), {
-                    action: "تسجيل دخول",
-                    timestamp: serverTimestamp()
-                });
-            } catch (e) { console.warn("log failed", e); }
+            try { localStorage.setItem('admin_email', email); } catch (e) {}
+            show("تم الدخول ✓", true);
 
-            show("تم تسجيل الدخول بنجاح، جاري التحويل...", true);
-            setTimeout(() => { window.location.href = "admin.html"; }, 600);
+            // سجّل الدخول دون تعطيل التحويل أكثر من نصف ثانية
+            const log = addDoc(collection(db, "admins", cred.user.uid, "logs"), { action: "تسجيل دخول", timestamp: serverTimestamp() }).catch(() => {});
+            await Promise.race([log, new Promise(r => setTimeout(r, 500))]);
+            window.location.replace("admin.html");
 
         } catch (error) {
             console.error(error);
-            show("خطأ في البريد أو كلمة المرور!", false);
-            btn.disabled = false;
+            show("خطأ في البريد أو كلمة المرور", false);
+            loggingIn = false; btn.disabled = false; btn.textContent = "تسجيل الدخول";
         }
-    }
-
-    btn.addEventListener('click', loginAdmin);
-    document.getElementById('password').addEventListener('keydown', (e) => { if (e.key === 'Enter') loginAdmin(); });
+    });
 </script>
 
 </body>
