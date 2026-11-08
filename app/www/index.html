@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+    <meta name="theme-color" content="#4f46e5">
+    <title>حضور الطالب</title>
+    <style>
+        :root { --primary:#4f46e5; --primary-soft:#eef2ff; --success:#16a34a; --success-soft:#dcfce7; --danger:#dc2626; --danger-soft:#fee2e2; --warning:#d97706; --warning-soft:#fef3c7; --bg:#f1f5f9; --card:#fff; --text:#0f172a; --gray:#64748b; --border:#e2e8f0; --input:#f8fafc; }
+        @media (prefers-color-scheme: dark) {
+            :root { --primary:#818cf8; --primary-soft:#1e1b4b; --success:#4ade80; --success-soft:#052e16; --danger:#f87171; --danger-soft:#450a0a; --warning:#fbbf24; --warning-soft:#451a03; --bg:#0b1020; --card:#151b2e; --text:#e5e7eb; --gray:#94a3b8; --border:#27304a; --input:#0f1424; }
+        }
+        * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+        html, body { margin:0; height:100%; }
+        body { font-family:system-ui,'Segoe UI',Tahoma,Arial,sans-serif; background:var(--bg); color:var(--text); font-size:17px; line-height:1.5; padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
+        .hidden { display:none !important; }
+        .screen { min-height:100vh; min-height:100dvh; padding:20px 16px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+        .card { background:var(--card); border:1px solid var(--border); border-radius:20px; width:100%; max-width:440px; padding:26px 22px; box-shadow:0 12px 30px -14px rgba(15,23,42,.25); text-align:center; }
+        .logo { width:68px; height:68px; margin:0 auto 12px; border-radius:22px; background:var(--primary-soft); display:grid; place-items:center; font-size:34px; }
+        h1 { font-size:21px; margin:0 0 6px; }
+        p { margin:6px 0; }
+        .muted { color:var(--gray); font-size:14px; }
+        label { display:block; text-align:right; font-size:14px; color:var(--gray); font-weight:600; margin:14px 0 6px; }
+        input[type=text], input[type=tel] { width:100%; min-height:54px; padding:12px 16px; font-size:18px; border-radius:14px; border:1.5px solid var(--border); background:var(--input); color:var(--text); outline:none; font-family:inherit; }
+        input:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); }
+        input.bad { border-color:var(--danger); }
+        .err { color:var(--danger); font-size:13px; font-weight:700; text-align:right; min-height:18px; margin-top:4px; }
+        .check { display:flex; gap:10px; align-items:flex-start; text-align:right; margin:18px 0 4px; font-size:14px; color:var(--text); }
+        .check input { width:22px; height:22px; margin-top:2px; flex:none; accent-color:var(--primary); }
+        button { width:100%; min-height:56px; margin-top:14px; font-size:18px; font-weight:800; border-radius:14px; border:none; background:var(--primary); color:#fff; cursor:pointer; font-family:inherit; }
+        button:active { transform:scale(.98); }
+        button:disabled { opacity:.5; }
+        .btn-ghost { background:var(--input); color:var(--text); border:1.5px solid var(--border); }
+        .btn-big { min-height:78px; font-size:22px; border-radius:20px; background:var(--success); color:#052e16; }
+        .info { background:var(--input); border:1px solid var(--border); border-radius:14px; padding:6px 14px; margin:16px 0 4px; text-align:right; }
+        .info div { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); }
+        .info div:last-child { border-bottom:none; }
+        .info span:first-child { color:var(--gray); font-size:14px; flex:none; }
+        .info span:last-child { font-weight:700; text-align:left; overflow-wrap:anywhere; }
+        .lock { display:inline-block; background:var(--warning-soft); color:var(--warning); font-weight:700; font-size:13px; padding:4px 12px; border-radius:20px; margin-top:6px; }
+        .spinner { width:34px; height:34px; border:3px solid var(--border); border-top-color:var(--primary); border-radius:50%; margin:14px auto; animation:spin .8s linear infinite; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        .big-ic { font-size:72px; margin-bottom:6px; animation:pop .4s ease; }
+        @keyframes pop { from { transform:scale(.3); opacity:0; } to { transform:scale(1); opacity:1; } }
+        .ok-t { color:var(--success); } .bad-t { color:var(--danger); } .warn-t { color:var(--warning); }
+
+        /* شاشة المسح */
+        #s-scan { padding:0; background:#000; justify-content:flex-start; position:relative; overflow:hidden; }
+        #video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+        .frame { position:absolute; top:50%; left:50%; width:min(70vw,300px); height:min(70vw,300px); transform:translate(-50%,-55%); border:4px solid #fff; border-radius:24px; box-shadow:0 0 0 100vmax rgba(0,0,0,.55); }
+        .scan-top { position:absolute; top:calc(env(safe-area-inset-top) + 14px); left:0; right:0; text-align:center; color:#fff; font-weight:700; padding:0 20px; text-shadow:0 1px 4px rgba(0,0,0,.7); }
+        .scan-bottom { position:absolute; bottom:calc(env(safe-area-inset-bottom) + 20px); left:16px; right:16px; }
+        #scan-msg { color:#fff; text-align:center; font-weight:700; min-height:26px; text-shadow:0 1px 4px rgba(0,0,0,.8); }
+        .scan-bottom button { background:rgba(255,255,255,.18); color:#fff; border:1.5px solid rgba(255,255,255,.5); }
+    </style>
+</head>
+<body>
+
+<!-- تحميل -->
+<div class="screen" id="s-boot">
+    <div class="card"><div class="logo">🎓</div><h1>حضور الطالب</h1><div class="spinner"></div><p class="muted" id="boot-text">جاري التحميل...</p></div>
+</div>
+
+<!-- لا يمكن المتابعة -->
+<div class="screen hidden" id="s-blocked">
+    <div class="card">
+        <div class="big-ic">⛔</div>
+        <h1 id="blocked-title">لا يمكن المتابعة</h1>
+        <p id="blocked-text" class="muted"></p>
+        <button id="blocked-retry">إعادة المحاولة</button>
+    </div>
+</div>
+
+<!-- تسجيل البيانات (مرة واحدة) -->
+<div class="screen hidden" id="s-register">
+    <form class="card" id="reg-form" novalidate>
+        <div class="logo">📝</div>
+        <h1>تسجيل بياناتك</h1>
+        <p class="muted">تُسجَّل مرة واحدة فقط وتُربط بهذا الجهاز، ولا يمكن تعديلها لاحقًا.</p>
+
+        <label for="r-name">الاسم الثلاثي</label>
+        <input type="text" id="r-name" maxlength="80" autocomplete="off" placeholder="مثال: جمال زكريا السيد">
+        <div class="err" id="e-name"></div>
+
+        <label for="r-phone">رقم الهاتف</label>
+        <input type="tel" id="r-phone" maxlength="14" inputmode="numeric" autocomplete="off" placeholder="01XXXXXXXXX">
+        <div class="err" id="e-phone"></div>
+
+        <label for="r-nid">الرقم القومي (14 رقمًا)</label>
+        <input type="tel" id="r-nid" maxlength="16" inputmode="numeric" autocomplete="off" placeholder="2XXXXXXXXXXXXX">
+        <div class="err" id="e-nid"></div>
+
+        <label class="check"><input type="checkbox" id="r-confirm"><span>أقر بأن هذه بياناتي أنا، وأنها صحيحة، وأعلم أنني لا أستطيع التسجيل لغيري.</span></label>
+
+        <button type="submit" id="reg-btn" disabled>حفظ البيانات</button>
+        <div class="err" id="e-form" style="text-align:center; margin-top:10px;"></div>
+    </form>
+</div>
+
+<!-- الرئيسية -->
+<div class="screen hidden" id="s-home">
+    <div class="card">
+        <div class="logo">✅</div>
+        <h1 id="h-name">...</h1>
+        <span class="lock">🔒 بياناتك مقفلة على هذا الجهاز</span>
+        <div class="info">
+            <div><span>الهاتف</span><span id="h-phone"></span></div>
+            <div><span>الرقم القومي</span><span id="h-nid"></span></div>
+        </div>
+        <button class="btn-big" id="scan-btn">📷 مسح QR وتسجيل الحضور</button>
+        <p class="muted" style="margin-top:16px;">لتعديل بياناتك أو تغيير الهاتف تواصل مع المشرف.</p>
+    </div>
+</div>
+
+<!-- المسح -->
+<div class="screen hidden" id="s-scan">
+    <video id="video" playsinline muted autoplay></video>
+    <div class="frame"></div>
+    <div class="scan-top">وجّه الكاميرا نحو الـ QR الظاهر على الشاشة</div>
+    <div class="scan-bottom">
+        <div id="scan-msg"></div>
+        <button id="scan-cancel">إلغاء</button>
+    </div>
+</div>
+
+<!-- النتيجة -->
+<div class="screen hidden" id="s-result">
+    <div class="card">
+        <div class="big-ic" id="res-ic">✅</div>
+        <h1 id="res-title"></h1>
+        <p id="res-text" class="muted"></p>
+        <button id="res-again">مسح مرة أخرى</button>
+        <button class="btn-ghost" id="res-home">رجوع</button>
+    </div>
+</div>
+
+<script src="jsQR.js"></script>
+<script>
+(function () {
+    "use strict";
+
+    var API_KEY = "AIzaSyAR_8fKmcHa3KDxt4AIt2ZMQ59UDMrZlDE";
+    var PROJECT = "mnu-attendance";
+    var ROOT = "projects/" + PROJECT + "/databases/(default)/documents";
+    var DOCS = "https://firestore.googleapis.com/v1/" + ROOT;
+    var COMMIT = "https://firestore.googleapis.com/v1/" + ROOT + ":commit?key=" + API_KEY;
+    var AUTH_KEY = "att_auth_v2";
+    var PROFILE_KEY = "att_profile_v2";
+
+    var $ = function (id) { return document.getElementById(id); };
+    var state = { deviceId: null, profile: null, stream: null, scanTimer: null, scanning: false, last: null };
+
+    // ---------- أدوات ----------
+    function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+    function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+    function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+
+    var SCREENS = ["boot", "blocked", "register", "home", "scan", "result"];
+    function show(name) { SCREENS.forEach(function (n) { $("s-" + n).classList.toggle("hidden", n !== name); }); }
+
+    function blocked(title, text, canRetry) {
+        $("blocked-title").textContent = title;
+        $("blocked-text").textContent = text;
+        $("blocked-retry").classList.toggle("hidden", !canRetry);
+        show("blocked");
+    }
+
+    function toLatinDigits(s) {
+        return String(s || "")
+            .replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); })
+            .replace(/[۰-۹]/g, function (d) { return String(d.charCodeAt(0) - 0x06F0); });
+    }
+    function digitsOnly(s) { return toLatinDigits(s).replace(/\D/g, ""); }
+
+    function timeoutFetch(url, opts, ms) {
+        var c = new AbortController();
+        var t = setTimeout(function () { c.abort(); }, ms || 20000);
+        opts = opts || {}; opts.signal = c.signal;
+        return fetch(url, opts).then(function (r) { clearTimeout(t); return r; }, function (e) { clearTimeout(t); throw e; });
+    }
+
+    // ---------- معرّف الجهاز ----------
+    function getDeviceId() {
+        var C = window.Capacitor;
+        if (!C || !C.isNativePlatform || !C.isNativePlatform()) return Promise.reject(new Error("not-native"));
+        var D = (C.Plugins && C.Plugins.Device) || (C.registerPlugin && C.registerPlugin("Device"));
+        if (!D || !D.getId) return Promise.reject(new Error("no-plugin"));
+        return D.getId().then(function (r) {
+            var id = String((r && (r.identifier || r.uuid)) || "").replace(/[^A-Za-z0-9_-]/g, "");
+            if (id.length < 8) throw new Error("bad-id");
+            return id;
+        });
+    }
+
+    // ---------- الدخول المجهول (هوية ثابتة لهذا التطبيق) ----------
+    function readAuth() { try { return JSON.parse(lsGet(AUTH_KEY) || "null"); } catch (e) { return null; } }
+    function saveAuth(o) {
+        var a = { idToken: o.idToken, refresh: o.refresh, uid: o.uid, exp: Date.now() + Number(o.expiresIn || 3600) * 1000 };
+        lsSet(AUTH_KEY, JSON.stringify(a));
+        return a;
+    }
+    function signUp() {
+        return timeoutFetch("https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" + API_KEY, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ returnSecureToken: true })
+        }).then(function (r) { if (!r.ok) throw new Error("auth"); return r.json(); })
+          .then(function (j) { return saveAuth({ idToken: j.idToken, refresh: j.refreshToken, uid: j.localId, expiresIn: j.expiresIn }); });
+    }
+    function refreshAuth(token) {
+        return timeoutFetch("https://securetoken.googleapis.com/v1/token?key=" + API_KEY, {
+            method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: "grant_type=refresh_token&refresh_token=" + encodeURIComponent(token)
+        }).then(function (r) { if (!r.ok) throw new Error("refresh"); return r.json(); })
+          .then(function (j) { return saveAuth({ idToken: j.id_token, refresh: j.refresh_token, uid: j.user_id, expiresIn: j.expires_in }); });
+    }
+    // لا نُنشئ هوية جديدة بصمت إن وُجدت هوية سابقة: الهوية مربوطة ببيانات الطالب
+    function getAuth(force) {
+        var c = readAuth();
+        if (c && !force && c.exp > Date.now() + 60000) return Promise.resolve(c);
+        if (c && c.refresh) return refreshAuth(c.refresh);
+        return signUp();
+    }
+
+    function authed(makeRequest) {
+        return getAuth(false).then(function (a) {
+            return makeRequest(a).then(function (r) {
+                if (r.status !== 401) return r;
+                return getAuth(true).then(makeRequest);
+            });
+        });
+    }
+
+    function docGet(path) {
+        return authed(function (a) {
+            return timeoutFetch(DOCS + path + "?key=" + API_KEY, { headers: { Authorization: "Bearer " + a.idToken } });
+        });
+    }
+
+    function commit(writes) {
+        return authed(function (a) {
+            return timeoutFetch(COMMIT, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.idToken },
+                body: JSON.stringify({ writes: writes(a) })
+            });
+        });
+    }
+
+    function errStatus(r) {
+        return r.json().catch(function () { return {}; }).then(function (j) { return (j && j.error && j.error.status) || ""; });
+    }
+
+    function str(v) { return { stringValue: String(v) }; }
+    function sv(f, k) { return f && f[k] && f[k].stringValue || ""; }
+
+    // ---------- التحقق من المدخلات ----------
+    function validName(raw) {
+        var n = String(raw || "").trim().replace(/\s+/g, " ");
+        if (n.length < 6 || n.length > 80) return null;
+        if (n.split(" ").length < 3) return null;
+        if (/[0-9٠-٩]/.test(n)) return null;
+        if (!/^[؀-ۿa-zA-Z .'-]+$/.test(n)) return null;
+        return n;
+    }
+    function validPhone(raw) {
+        var p = digitsOnly(raw);
+        return /^01[0125]\d{8}$/.test(p) ? p : null;
+    }
+    function validNid(raw) {
+        var n = digitsOnly(raw);
+        if (!/^[23]\d{13}$/.test(n)) return null;
+        var mm = Number(n.substr(3, 2)), dd = Number(n.substr(5, 2));
+        if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+        return n;
+    }
+
+    // ---------- عرض البيانات ----------
+    function showHome() {
+        var p = state.profile;
+        $("h-name").textContent = p.name;
+        $("h-phone").textContent = p.phone;
+        $("h-nid").textContent = p.nationalId.slice(0, 3) + "••••••••" + p.nationalId.slice(-3);
+        show("home");
+    }
+
+    function cacheProfile(p) { state.profile = p; lsSet(PROFILE_KEY, JSON.stringify(p)); }
+
+    // ---------- الإقلاع ----------
+    function boot() {
+        show("boot");
+        $("boot-text").textContent = "جاري التحقق من الجهاز...";
+
+        getDeviceId().then(function (id) {
+            state.deviceId = id;
+            return start();
+        }).catch(function (e) {
+            if (e && (e.message === "not-native" || e.message === "no-plugin" || e.message === "bad-id")) {
+                blocked("افتح التطبيق على هاتف أندرويد", "تعذّر قراءة معرّف الجهاز. هذا التطبيق يعمل على الهاتف فقط.", false);
+            } else {
+                networkProblem();
+            }
+        });
+    }
+
+    function networkProblem() { blocked("لا يوجد اتصال", "تأكد من الإنترنت ثم أعد المحاولة.", true); }
+
+    function start() {
+        var cached = null;
+        try { cached = JSON.parse(lsGet(PROFILE_KEY) || "null"); } catch (e) {}
+
+        if (cached && cached.deviceId === state.deviceId) {
+            state.profile = cached;
+            showHome();
+            // تحقق صامت في الخلفية: هل أعاد المشرف تعيين بياناتي؟
+            docGet("/devices/" + encodeURIComponent(state.deviceId)).then(function (r) {
+                if (r.status === 404) { lsDel(PROFILE_KEY); state.profile = null; show("register"); }
+            }).catch(function () {});
+            return;
+        }
+
+        lsDel(PROFILE_KEY);
+        return restoreFromServer();
+    }
+
+    // يحاول استرجاع بيانات الجهاز المسجّل مسبقًا (مثلًا بعد مسح بيانات التطبيق مع بقاء الهوية)
+    function restoreFromServer() {
+        return docGet("/devices/" + encodeURIComponent(state.deviceId)).then(function (r) {
+            if (r.status === 404) { show("register"); return; }
+            if (r.status === 403) {
+                blocked("هذا الجهاز مسجّل مسبقًا", "سُجّلت عليه بيانات من قبل. تواصل مع المشرف لإعادة التعيين.", false);
+                return;
+            }
+            if (!r.ok) { networkProblem(); return; }
+            return r.json().then(function (d) {
+                var nid = sv(d.fields, "nationalId");
+                return docGet("/profiles/" + encodeURIComponent(nid)).then(function (pr) {
+                    if (!pr.ok) { networkProblem(); return; }
+                    return pr.json().then(function (pd) {
+                        var f = pd.fields;
+                        cacheProfile({ name: sv(f, "name"), phone: sv(f, "phone"), nationalId: sv(f, "nationalId"), deviceId: sv(f, "deviceId") });
+                        showHome();
+                    });
+                });
+            });
+        }).catch(networkProblem);
+    }
+
+    // ---------- تسجيل البيانات ----------
+    var fields = { name: "r-name", phone: "r-phone", nid: "r-nid" };
+
+    function checkForm(showErrors) {
+        var name = validName($("r-name").value);
+        var phone = validPhone($("r-phone").value);
+        var nid = validNid($("r-nid").value);
+        if (showErrors) {
+            $("e-name").textContent = name ? "" : "اكتب اسمك الثلاثي بالحروف فقط";
+            $("e-phone").textContent = phone ? "" : "رقم هاتف مصري صحيح (11 رقمًا)";
+            $("e-nid").textContent = nid ? "" : "الرقم القومي يتكون من 14 رقمًا صحيحة";
+            $("r-name").classList.toggle("bad", !name);
+            $("r-phone").classList.toggle("bad", !phone);
+            $("r-nid").classList.toggle("bad", !nid);
+        }
+        return (name && phone && nid) ? { name: name, phone: phone, nationalId: nid } : null;
+    }
+
+    function updateRegButton() { $("reg-btn").disabled = !$("r-confirm").checked; }
+
+    $("r-confirm").addEventListener("change", updateRegButton);
+    ["r-phone", "r-nid"].forEach(function (id) {
+        $(id).addEventListener("input", function () { var el = $(id); var v = digitsOnly(el.value); if (el.value !== v) el.value = v; });
+    });
+
+    $("reg-form").addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        $("e-form").textContent = "";
+        var data = checkForm(true);
+        if (!data) return;
+
+        var summary = "الاسم: " + data.name + "\nالهاتف: " + data.phone + "\nالرقم القومي: " + data.nationalId +
+            "\n\nلن تستطيع تعديل هذه البيانات بعد الحفظ. هل هي صحيحة؟";
+        if (!window.confirm(summary)) return;
+
+        var btn = $("reg-btn");
+        btn.disabled = true;
+        btn.textContent = "جاري الحفظ...";
+
+        function fail(msg) { $("e-form").textContent = msg; btn.textContent = "حفظ البيانات"; updateRegButton(); }
+
+        commit(function (a) {
+            var p = ROOT + "/profiles/" + data.nationalId;
+            var d = ROOT + "/devices/" + state.deviceId;
+            return [
+                {
+                    update: { name: p, fields: { name: str(data.name), phone: str(data.phone), nationalId: str(data.nationalId), deviceId: str(state.deviceId), uid: str(a.uid) } },
+                    updateTransforms: [{ fieldPath: "createdAt", setToServerValue: "REQUEST_TIME" }],
+                    currentDocument: { exists: false }
+                },
+                {
+                    update: { name: d, fields: { nationalId: str(data.nationalId), uid: str(a.uid) } },
+                    updateTransforms: [{ fieldPath: "createdAt", setToServerValue: "REQUEST_TIME" }],
+                    currentDocument: { exists: false }
+                }
+            ];
+        }).then(function (r) {
+            if (r.ok) {
+                cacheProfile({ name: data.name, phone: data.phone, nationalId: data.nationalId, deviceId: state.deviceId });
+                btn.textContent = "حفظ البيانات";
+                showHome();
+                return;
+            }
+            return errStatus(r).then(function (st) {
+                if (st === "ALREADY_EXISTS" || r.status === 409) {
+                    fail("هذا الرقم القومي أو هذا الجهاز مسجّل مسبقًا. إن كانت بياناتك فتواصل مع المشرف لإعادة التعيين.");
+                } else if (st === "PERMISSION_DENIED" || r.status === 403) {
+                    fail("تعذّر الحفظ. راجع الأرقام وحاول مرة أخرى، وإن تكرر فتواصل مع المشرف.");
+                } else {
+                    fail("حدث خطأ أثناء الحفظ، حاول مرة أخرى.");
+                }
+            });
+        }).catch(function () { fail("تعذّر الاتصال. تأكد من الإنترنت وحاول مرة أخرى."); });
+    });
+
+    // ---------- المسح ----------
+    function stopCamera() {
+        state.scanning = false;
+        if (state.scanTimer) { clearTimeout(state.scanTimer); state.scanTimer = null; }
+        if (state.stream) { state.stream.getTracks().forEach(function (t) { t.stop(); }); state.stream = null; }
+        var v = $("video"); try { v.srcObject = null; } catch (e) {}
+    }
+
+    function parseQR(text) {
+        try {
+            var u = new URL(String(text).trim());
+            var s = u.searchParams.get("session"), t = u.searchParams.get("token");
+            if (s && t && /^[A-Za-z0-9]{10,40}$/.test(s) && /^[A-Za-z0-9]{6,30}$/.test(t)) return { session: s, token: t };
+        } catch (e) {}
+        return null;
+    }
+
+    function startScan() {
+        $("scan-msg").textContent = "";
+        show("scan");
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            showResult("bad", "الكاميرا غير متاحة", "تعذّر تشغيل الكاميرا على هذا الجهاز.", false);
+            return;
+        }
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false })
+            .then(function (stream) {
+                state.stream = stream;
+                var v = $("video");
+                v.srcObject = stream;
+                return v.play();
+            }).then(function () {
+                state.scanning = true;
+                scanLoop();
+            }).catch(function (e) {
+                stopCamera();
+                var denied = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
+                showResult("bad", denied ? "الكاميرا غير مسموحة" : "تعذّر تشغيل الكاميرا",
+                    denied ? "اسمح للتطبيق باستخدام الكاميرا من إعدادات الهاتف ثم أعد المحاولة." : "أغلق التطبيقات الأخرى التي تستخدم الكاميرا وأعد المحاولة.", true);
+            });
+    }
+
+    var detector = null;
+    try { if ("BarcodeDetector" in window) detector = new window.BarcodeDetector({ formats: ["qr_code"] }); } catch (e) { detector = null; }
+
+    var canvas = document.createElement("canvas");
+    var ctx = canvas.getContext("2d", { willReadFrequently: true });
+    var lastBad = 0;
+
+    function onCode(text) {
+        var q = parseQR(text);
+        if (!q) {
+            if (Date.now() - lastBad > 1500) { lastBad = Date.now(); $("scan-msg").textContent = "هذا ليس رمز حضور"; }
+            return false;
+        }
+        stopCamera();
+        if (navigator.vibrate) navigator.vibrate(60);
+        submitAttendance(q);
+        return true;
+    }
+
+    function scanLoop() {
+        if (!state.scanning) return;
+        var v = $("video");
+        if (v.readyState < 2 || !v.videoWidth) { state.scanTimer = setTimeout(scanLoop, 120); return; }
+
+        function next() { if (state.scanning) state.scanTimer = setTimeout(scanLoop, 110); }
+
+        if (detector) {
+            detector.detect(v).then(function (codes) {
+                if (codes && codes.length && onCode(codes[0].rawValue)) return;
+                next();
+            }).catch(function () { detector = null; next(); });
+            return;
+        }
+
+        var scale = Math.min(1, 640 / Math.max(v.videoWidth, v.videoHeight));
+        var w = Math.max(1, Math.round(v.videoWidth * scale)), h = Math.max(1, Math.round(v.videoHeight * scale));
+        canvas.width = w; canvas.height = h;
+        ctx.drawImage(v, 0, 0, w, h);
+        var img = ctx.getImageData(0, 0, w, h);
+        var res = (typeof jsQR === "function") ? jsQR(img.data, w, h, { inversionAttempts: "dontInvert" }) : null;
+        if (res && res.data && onCode(res.data)) return;
+        next();
+    }
+
+    // ---------- تسجيل الحضور تلقائيًا بالبيانات المحفوظة ----------
+    function showResult(kind, title, text, canRetry) {
+        var ic = { ok: "✅", warn: "⚠️", bad: "❌" }[kind] || "ℹ️";
+        $("res-ic").textContent = ic;
+        $("res-title").textContent = title;
+        $("res-title").className = kind === "ok" ? "ok-t" : kind === "warn" ? "warn-t" : "bad-t";
+        $("res-text").textContent = text;
+        $("res-again").classList.toggle("hidden", !canRetry);
+        $("res-again").textContent = kind === "ok" ? "مسح جلسة أخرى" : "مسح مرة أخرى";
+        show("result");
+    }
+
+    function fetchSession(id) {
+        return timeoutFetch(DOCS + "/sessions/" + encodeURIComponent(id) + "?key=" + API_KEY, {}, 12000)
+            .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+    }
+
+    function submitAttendance(q) {
+        state.last = q;
+        $("boot-text").textContent = "جاري تسجيل حضورك...";
+        show("boot");
+        var p = state.profile;
+
+        var sessionP = fetchSession(q.session);
+
+        commit(function (a) {
+            return [{
+                update: {
+                    name: ROOT + "/attendance/" + q.session + "_" + p.nationalId,
+                    fields: {
+                        sessionId: str(q.session), studentName: str(p.name), nationalId: str(p.nationalId),
+                        phone: str(p.phone), deviceId: str(state.deviceId), token: str(q.token)
+                    }
+                },
+                updateTransforms: [{ fieldPath: "timestamp", setToServerValue: "REQUEST_TIME" }],
+                currentDocument: { exists: false }
+            }];
+        }).then(function (r) {
+            return sessionP.then(function (sd) {
+                var f = sd && sd.fields;
+                var subject = sv(f, "subject");
+                if (r.ok) {
+                    showResult("ok", "تم تسجيل حضورك", subject ? "المادة: " + subject : "", true);
+                    return;
+                }
+                return errStatus(r).then(function (st) {
+                    if (st === "ALREADY_EXISTS" || r.status === 409) {
+                        showResult("warn", "سجّلت حضورك مسبقًا", subject ? "المادة: " + subject : "", false);
+                    } else if (st === "PERMISSION_DENIED" || r.status === 403) {
+                        var expired = f && ((f.active && f.active.booleanValue === false) ||
+                            (f.expiresAt && Date.now() > Number(f.expiresAt.integerValue || f.expiresAt.doubleValue)));
+                        if (!sd) showResult("bad", "الجلسة غير موجودة", "تأكد أنك تمسح الرمز الظاهر على الشاشة.", true);
+                        else if (expired) showResult("bad", "انتهت الجلسة", "أُغلقت جلسة الحضور هذه.", false);
+                        else showResult("bad", "الرمز لم يعد صالحًا", "الرمز يتغيّر باستمرار. امسح الرمز الظاهر الآن على الشاشة.", true);
+                    } else {
+                        showResult("bad", "حدث خطأ", "تعذّر التسجيل. حاول مرة أخرى.", true);
+                    }
+                });
+            });
+        }).catch(function () {
+            showResult("bad", "لا يوجد اتصال", "تأكد من الإنترنت ثم امسح الرمز مرة أخرى.", true);
+        });
+    }
+
+    // ---------- الأزرار ----------
+    $("scan-btn").addEventListener("click", startScan);
+    $("scan-cancel").addEventListener("click", function () { stopCamera(); showHome(); });
+    $("res-again").addEventListener("click", startScan);
+    $("res-home").addEventListener("click", function () { stopCamera(); showHome(); });
+    $("blocked-retry").addEventListener("click", boot);
+    document.addEventListener("visibilitychange", function () { if (document.hidden && state.scanning) { stopCamera(); showHome(); } });
+
+    boot();
+})();
+</script>
+</body>
+</html>
