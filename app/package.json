@@ -1,0 +1,13 @@
+{
+  "name": "mnu-attendance-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "تطبيق تسجيل حضور الطالب بمسح QR",
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/device": "^6.0.2",
+    "jsqr": "^1.4.0"
+  }
+}

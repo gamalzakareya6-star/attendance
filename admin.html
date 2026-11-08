@@ -139,6 +139,7 @@
     <button class="tab" data-tab="attendance"><span class="ic">📋</span>الحضور</button>
     <button class="tab" data-tab="profile"><span class="ic">👤</span>ملفي</button>
     <button class="tab hidden" data-tab="admins" id="tab-admins"><span class="ic">👥</span>المشرفون</button>
+    <button class="tab hidden" data-tab="students" id="tab-students"><span class="ic">🎓</span>الطلاب</button>
     <button class="tab" data-tab="logs"><span class="ic">🕘</span>السجل</button>
 </nav>
 
@@ -247,6 +248,19 @@
         <div class="card">
             <h3>المشرفون الحاليون</h3>
             <div class="list" id="admins-list"><div class="skeleton"></div><div class="skeleton"></div></div>
+        </div>
+    </section>
+
+    <!-- ===== الطلاب (مشرف عام) ===== -->
+    <section class="panel hidden" data-panel="students">
+        <div class="card">
+            <h3>الطلاب المسجّلون في التطبيق</h3>
+            <p class="muted" style="margin-top:-6px; font-size:14px;">«إعادة تعيين» تحذف تسجيل الطالب ليسجّل من جديد (مثل تغيير الهاتف). لا تُعد التعيين إلا بعد التأكد من هويته.</p>
+            <div class="toolbar">
+                <input type="search" id="stu-search" placeholder="🔍 بحث بالاسم أو الرقم القومي أو الهاتف">
+                <span class="badge" style="font-size:14px; padding:6px 14px;">العدد: <b id="stu-count">0</b></span>
+            </div>
+            <div class="list" id="students-list"><div class="empty">...</div></div>
         </div>
     </section>
 
@@ -367,6 +381,7 @@
         try { sessionStorage.setItem('tab', name); } catch (e) {}
         if (name === 'attendance' && !sessionsLoaded) loadSessionsList();
         if (name === 'admins' && isSuper && !adminsLoaded) { adminsLoaded = true; loadAdmins(); }
+        if (name === 'students' && isSuper && !studentsLoaded) loadStudents();
         if (name === 'logs' && (logsDirty || viewedLogsUid !== me.uid)) loadLogs(viewedLogsUid || me.uid, viewedLogsUid && viewedLogsUid !== me.uid ? $('logs-title').dataset.label : '');
         window.scrollTo({ top:0 });
     }
@@ -400,7 +415,7 @@
         fillSelect($('new-admin-spec'), SPECIALIZATIONS);
         fillSelect($('refresh-select'), REFRESH_OPTIONS.map(String), '20');
 
-        if (isSuper) $('tab-admins').classList.remove('hidden');
+        if (isSuper) { $('tab-admins').classList.remove('hidden'); $('tab-students').classList.remove('hidden'); }
 
         let tab = 'session';
         try { tab = sessionStorage.getItem('tab') || 'session'; } catch (e) {}
@@ -641,7 +656,9 @@
     function renderAttendance() {
         const box = $('attendance-list');
         const term = $('att-search').value.trim().toLowerCase();
-        const rows = term ? attRows.filter(r => r.studentName.toLowerCase().includes(term)) : attRows;
+        const rows = term
+            ? attRows.filter(r => `${r.studentName} ${r.nationalId || ''} ${r.phone || ''}`.toLowerCase().includes(term))
+            : attRows;
         if (!rows.length) { setEmpty(box, attRows.length ? "لا نتائج" : "لا يوجد حضور حتى الآن"); return; }
 
         const frag = document.createDocumentFragment();
@@ -652,7 +669,8 @@
             const name = el('div', 'name', att.studentName);
             name.appendChild(el('span', 'tag' + (att.manual ? '' : ' self'), att.manual ? 'يدوي' : 'ذاتي'));
             main.appendChild(name);
-            main.appendChild(el('div', 'meta', fmtTime(att.timestamp)));
+            const extra = [att.nationalId, att.phone].filter(Boolean).join(' • ');
+            main.appendChild(el('div', 'meta', fmtTime(att.timestamp) + (extra ? ' — ' + extra : '')));
             row.appendChild(main);
 
             const acts = el('div', 'acts');
@@ -751,9 +769,11 @@
     function exportToExcel() {
         if (!attRows.length) return toast("لا توجد بيانات لتصديرها", "err");
         const s = sessionsCache.get(viewedSessionId);
-        let csv = "﻿م,اسم الطالب,النوع,وقت التسجيل\n";
+        // الأرقام الطويلة تُكتب كنص حتى لا يحوّلها Excel إلى صيغة علمية
+        const asText = (v) => (/^\d{6,}$/.test(String(v || '')) ? `="${v}"` : csvSafe(v || ''));
+        let csv = "﻿م,اسم الطالب,الرقم القومي,الهاتف,النوع,وقت التسجيل\n";
         attRows.forEach(r => {
-            csv += `${r.idx},${csvSafe(r.studentName)},${csvSafe(r.manual ? 'يدوي' : 'ذاتي')},${csvSafe(fmtTime(r.timestamp))}\n`;
+            csv += `${r.idx},${csvSafe(r.studentName)},${asText(r.nationalId)},${asText(r.phone)},${csvSafe(r.manual ? 'يدوي' : 'ذاتي')},${csvSafe(fmtTime(r.timestamp))}\n`;
         });
         const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8;' }));
         const a = document.createElement('a');
@@ -786,6 +806,60 @@
             });
             box.replaceChildren(frag);
         } catch (e) { console.error(e); setEmpty(box, "تعذّر تحميل السجل"); }
+    }
+
+    // ---------- الطلاب (مشرف عام) ----------
+    let studentsAll = [], studentsLoaded = false;
+
+    async function loadStudents() {
+        const box = $('students-list');
+        box.replaceChildren(el('div', 'skeleton'), el('div', 'skeleton'));
+        try {
+            const snap = await getDocs(query(collection(db, "profiles"), limit(1000)));
+            studentsAll = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }))
+                .sort((a, b) => (toDate(b.createdAt)?.getTime() ?? 0) - (toDate(a.createdAt)?.getTime() ?? 0));
+            studentsLoaded = true;
+            renderStudents();
+        } catch (e) { console.error(e); setEmpty(box, "تعذّر تحميل الطلاب (للمشرف العام فقط)"); }
+    }
+
+    function renderStudents() {
+        const box = $('students-list');
+        const term = $('stu-search').value.trim().toLowerCase();
+        const rows = term
+            ? studentsAll.filter(s => `${s.name} ${s.nationalId} ${s.phone}`.toLowerCase().includes(term))
+            : studentsAll;
+        $('stu-count').textContent = studentsAll.length;
+        if (!rows.length) { setEmpty(box, studentsAll.length ? "لا نتائج" : "لا يوجد طلاب مسجّلون بعد"); return; }
+
+        const frag = document.createDocumentFragment();
+        rows.forEach((s, i) => {
+            const row = el('div', 'row');
+            row.appendChild(el('div', 'n', i + 1));
+            const main = el('div', 'main');
+            main.appendChild(el('div', 'name', s.name));
+            main.appendChild(el('div', 'meta', `${s.nationalId} • ${s.phone} • ${fmtTime(s.createdAt)}`));
+            row.appendChild(main);
+            const acts = el('div', 'acts');
+            acts.appendChild(smallBtn("إعادة تعيين", "btn-danger", () => resetStudent(s)));
+            row.appendChild(acts);
+            frag.appendChild(row);
+        });
+        box.replaceChildren(frag);
+    }
+
+    async function resetStudent(s) {
+        if (!confirm(`إعادة تعيين ${s.name}؟\nسيُحذف تسجيله ليسجّل من جديد على أي جهاز. سجلات حضوره السابقة تبقى.`)) return;
+        try {
+            const b = writeBatch(db);
+            b.delete(doc(db, "profiles", s.id));
+            if (s.deviceId) b.delete(doc(db, "devices", s.deviceId));
+            await b.commit();
+            studentsAll = studentsAll.filter(x => x.id !== s.id);
+            renderStudents();
+            logAction(`إعادة تعيين طالب: ${s.name}`);
+            toast("تمت إعادة التعيين", "ok");
+        } catch (e) { console.error(e); toast("تعذّرت إعادة التعيين", "err"); }
     }
 
     // ---------- المشرفون ----------
@@ -866,6 +940,7 @@
     $('manual-add-btn').addEventListener('click', addManual);
     $('manual-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') addManual(); });
     $('att-search').addEventListener('input', renderAttendance);
+    $('stu-search').addEventListener('input', renderStudents);
     $('delete-session-btn').addEventListener('click', deleteSession);
     $('add-admin-btn').addEventListener('click', addAdmin);
 </script>

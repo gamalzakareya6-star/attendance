@@ -1,0 +1,188 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function adminPath(uid) {
+      return /databases/$(database)/documents/admins/$(uid);
+    }
+
+    function sessionPath(sid) {
+      return /databases/$(database)/documents/sessions/$(sid);
+    }
+
+    function codePath(sid) {
+      return /databases/$(database)/documents/sessions/$(sid)/private/code;
+    }
+
+    function profilePath(nid) {
+      return /databases/$(database)/documents/profiles/$(nid);
+    }
+
+    function devicePath(did) {
+      return /databases/$(database)/documents/devices/$(did);
+    }
+
+    // مشرف عادي أو مشرف عام: يوجد مستند باسم UID في مجموعة admins
+    function isAdmin() {
+      return signedIn() && exists(adminPath(request.auth.uid));
+    }
+
+    // المشرف العام: حقل role في مستنده = super
+    function isSuper() {
+      return isAdmin() && get(adminPath(request.auth.uid)).data.get('role', '') == 'super';
+    }
+
+    // يملك الجلسة (أنشأها) أو مشرف عام
+    function canManageSession(sid) {
+      return isSuper()
+        || (isAdmin() && get(sessionPath(sid)).data.createdBy == request.auth.uid);
+    }
+
+    // ===== المشرفون =====
+    match /admins/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isSuper());
+      allow list: if isSuper();
+      allow create: if isSuper();
+      // المشرف يعدّل اسمه وتخصصه فقط، والمشرف العام يعدّل أي شيء
+      allow update: if isSuper()
+        || (isAdmin() && request.auth.uid == uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['specialization', 'name']));
+      allow delete: if isSuper() && request.auth.uid != uid;
+
+      // سجل نشاط كل مشرف
+      match /logs/{logId} {
+        allow create: if isAdmin() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['action', 'sessionId', 'timestamp'])
+          && request.resource.data.timestamp == request.time;
+        allow read: if signedIn() && (request.auth.uid == uid || isSuper());
+        allow update: if false;
+        allow delete: if isSuper();
+      }
+    }
+
+    // ===== بيانات الطلاب (تُسجَّل مرة واحدة فقط) =====
+    // الرقم القومي = معرّف المستند، فلا يمكن تسجيله إلا مرة واحدة.
+    // معرّف الجهاز = معرّف مستند في devices، فلا يسجّل الجهاز إلا مرة واحدة.
+    // المستندان يُنشآن معًا في عملية واحدة ويتحقق كل منهما من الآخر.
+    match /profiles/{nid} {
+      allow get: if signedIn()
+        && (resource == null || resource.data.uid == request.auth.uid || isAdmin());
+      allow list: if isSuper();
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['name', 'phone', 'nationalId', 'deviceId', 'uid', 'createdAt'])
+        && request.resource.data.keys().hasAll(['name', 'phone', 'nationalId', 'deviceId', 'uid', 'createdAt'])
+        && request.resource.data.nationalId == nid
+        && nid.matches('[23][0-9]{13}')
+        && request.resource.data.phone is string
+        && request.resource.data.phone.matches('01[0125][0-9]{8}')
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 6
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.deviceId is string
+        && request.resource.data.deviceId.size() >= 8
+        && request.resource.data.deviceId.size() <= 64
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && existsAfter(devicePath(request.resource.data.deviceId))
+        && getAfter(devicePath(request.resource.data.deviceId)).data.nationalId == nid
+        && getAfter(devicePath(request.resource.data.deviceId)).data.uid == request.auth.uid;
+
+      allow update: if false;
+      allow delete: if isSuper();   // إعادة التعيين
+    }
+
+    match /devices/{did} {
+      allow get: if signedIn()
+        && (resource == null || resource.data.uid == request.auth.uid || isAdmin());
+      allow list: if false;
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['nationalId', 'uid', 'createdAt'])
+        && request.resource.data.keys().hasAll(['nationalId', 'uid', 'createdAt'])
+        && request.resource.data.nationalId is string
+        && request.resource.data.nationalId.matches('[23][0-9]{13}')
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && existsAfter(profilePath(request.resource.data.nationalId))
+        && getAfter(profilePath(request.resource.data.nationalId)).data.deviceId == did
+        && getAfter(profilePath(request.resource.data.nationalId)).data.uid == request.auth.uid;
+
+      allow update: if false;
+      allow delete: if isSuper();
+    }
+
+    // ===== الجلسات =====
+    match /sessions/{sessionId} {
+      // الطالب يفتح جلسة واحدة بمعرّفها فقط
+      allow get: if true;
+      // القائمة: كل مشرف يرى جلساته، والمشرف العام يرى الكل
+      allow list: if isSuper()
+        || (isAdmin() && resource.data.createdBy == request.auth.uid);
+
+      allow create: if isAdmin()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.keys().hasOnly(['subject', 'specialization', 'createdBy', 'createdByName', 'createdAt', 'expiresAt', 'active', 'refreshSeconds'])
+        && request.resource.data.subject is string
+        && request.resource.data.subject.size() > 0
+        && request.resource.data.subject.size() <= 80
+        && request.resource.data.active == true
+        && request.resource.data.refreshSeconds in [5, 10, 15, 20, 30, 40, 50, 60];
+
+      allow update: if isSuper()
+        || (isAdmin() && resource.data.createdBy == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active']));
+
+      allow delete: if isSuper();
+
+      // رموز الـ QR المتحركة: لصاحب الجلسة والمشرف العام فقط
+      match /private/{docId} {
+        allow read, write: if canManageSession(sessionId);
+      }
+    }
+
+    // ===== الحضور =====
+    match /attendance/{attendanceId} {
+      allow get: if resource != null && canManageSession(resource.data.sessionId);
+      allow list: if canManageSession(resource.data.sessionId);
+
+      // تسجيل الطالب من التطبيق: يلزم ملف مسجّل على الجهاز نفسه، ورمز صالح، وجلسة فعّالة.
+      // معرّف السجل = الجلسة + الرقم القومي، فلا يتكرر الطالب في الجلسة.
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['sessionId', 'studentName', 'nationalId', 'phone', 'deviceId', 'token', 'timestamp'])
+        && request.resource.data.keys().hasAll(['sessionId', 'studentName', 'nationalId', 'phone', 'deviceId', 'token', 'timestamp'])
+        && attendanceId == request.resource.data.sessionId + '_' + request.resource.data.nationalId
+        && request.resource.data.timestamp == request.time
+        && exists(profilePath(request.resource.data.nationalId))
+        && get(profilePath(request.resource.data.nationalId)).data.uid == request.auth.uid
+        && get(profilePath(request.resource.data.nationalId)).data.deviceId == request.resource.data.deviceId
+        && get(profilePath(request.resource.data.nationalId)).data.name == request.resource.data.studentName
+        && get(profilePath(request.resource.data.nationalId)).data.phone == request.resource.data.phone
+        && get(sessionPath(request.resource.data.sessionId)).data.active == true
+        && request.time.toMillis() < get(sessionPath(request.resource.data.sessionId)).data.expiresAt
+        && request.resource.data.token in get(codePath(request.resource.data.sessionId)).data.valid;
+
+      // إضافة يدوية من المشرف
+      allow create: if isAdmin()
+        && canManageSession(request.resource.data.sessionId)
+        && attendanceId.matches(request.resource.data.sessionId + '_manual_.*')
+        && request.resource.data.keys().hasOnly(['sessionId', 'studentName', 'timestamp', 'manual', 'addedBy'])
+        && request.resource.data.manual == true
+        && request.resource.data.addedBy == request.auth.uid
+        && request.resource.data.studentName is string
+        && request.resource.data.studentName.size() >= 2
+        && request.resource.data.studentName.size() <= 80
+        && request.resource.data.timestamp == request.time;
+
+      // تعديل الاسم: للمشرف العام فقط
+      allow update: if isSuper()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentName']);
+
+      allow delete: if canManageSession(resource.data.sessionId);
+    }
+  }
+}
