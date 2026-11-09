@@ -52,6 +52,11 @@
         .scan-bottom { position:absolute; bottom:calc(env(safe-area-inset-bottom) + 20px); left:16px; right:16px; }
         #scan-msg { color:#fff; text-align:center; font-weight:700; min-height:26px; text-shadow:0 1px 4px rgba(0,0,0,.8); }
         .scan-bottom button { background:rgba(255,255,255,.18); color:#fff; border:1.5px solid rgba(255,255,255,.5); }
+            select { width:100%; min-height:54px; padding:10px 14px; font-size:17px; border-radius:14px; border:1.5px solid var(--border); background:var(--input); color:var(--text); font-family:inherit; }
+        h3.lvl { text-align:right; font-size:15px; margin:18px 0 6px; color:var(--primary); }
+        .crs { text-align:right; border:1px solid var(--border); background:var(--input); border-radius:14px; padding:12px 14px; margin:8px 0; }
+        .crs-n { font-weight:800; } .crs-s { font-size:14px; margin-top:4px; } .crs-t { font-size:14px; font-weight:700; margin-top:4px; }
+        .bar { height:8px; background:var(--border); border-radius:6px; overflow:hidden; margin-top:6px; } .bar i { display:block; height:100%; background:var(--success); }
     </style>
 </head>
 <body>
@@ -90,6 +95,10 @@
         <input type="tel" id="r-nid" maxlength="16" inputmode="numeric" autocomplete="off" placeholder="2XXXXXXXXXXXXX">
         <div class="err" id="e-nid"></div>
 
+        <label for="r-prog">البرنامج (التخصص)</label>
+        <select id="r-prog"><option value="">...</option></select>
+        <div class="err" id="e-prog"></div>
+
         <label class="check"><input type="checkbox" id="r-confirm"><span>أقر بأن هذه بياناتي أنا، وأنها صحيحة، وأعلم أنني لا أستطيع التسجيل لغيري.</span></label>
 
         <button type="submit" id="reg-btn" disabled>حفظ البيانات</button>
@@ -107,6 +116,7 @@
             <div><span>الهاتف</span><span id="h-phone"></span></div>
             <div><span>الرقم القومي</span><span id="h-nid"></span></div>
         </div>
+        <button class="btn-ghost" id="h-courses">📊 حضوري في المواد</button>
         <button class="btn-big" id="scan-btn">📷 مسح QR وتسجيل الحضور</button>
         <p class="muted" style="margin-top:16px;">لتعديل بياناتك أو تغيير الهاتف تواصل مع المشرف.</p>
     </div>
@@ -124,6 +134,15 @@
 </div>
 
 <!-- النتيجة -->
+<div class="screen hidden" id="s-courses">
+    <div class="card" style="max-width:520px">
+        <div class="logo">📊</div>
+        <h1>حضوري في المواد</h1>
+        <div id="c-list"></div>
+        <button class="btn-ghost" id="c-back">رجوع</button>
+    </div>
+</div>
+
 <div class="screen hidden" id="s-result">
     <div class="card">
         <div class="big-ic" id="res-ic">✅</div>
@@ -155,7 +174,7 @@
     function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
     function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
 
-    var SCREENS = ["boot", "blocked", "register", "home", "scan", "result"];
+    var SCREENS = ["boot", "blocked", "register", "home", "courses", "scan", "result"];
     function show(name) { SCREENS.forEach(function (n) { $("s-" + n).classList.toggle("hidden", n !== name); }); }
 
     function blocked(title, text, canRetry) {
@@ -356,7 +375,7 @@
                     if (!pr.ok) { networkProblem(); return; }
                     return pr.json().then(function (pd) {
                         var f = pd.fields;
-                        cacheProfile({ name: sv(f, "name"), phone: sv(f, "phone"), nationalId: sv(f, "nationalId"), deviceId: sv(f, "deviceId") });
+                        cacheProfile({ name: sv(f, "name"), phone: sv(f, "phone"), nationalId: sv(f, "nationalId"), deviceId: sv(f, "deviceId"), program: sv(f, "program") });
                         showHome();
                     });
                 });
@@ -394,6 +413,9 @@
         $("e-form").textContent = "";
         var data = checkForm(true);
         if (!data) return;
+        var prog = $("r-prog").value;
+        if (!prog) { $("e-prog").textContent = "اختر برنامجك"; return; }
+        $("e-prog").textContent = ""; data.program = prog;
 
         var summary = "الاسم: " + data.name + "\nالهاتف: " + data.phone + "\nالرقم القومي: " + data.nationalId +
             "\n\nلن تستطيع تعديل هذه البيانات بعد الحفظ. هل هي صحيحة؟";
@@ -410,7 +432,7 @@
             var d = ROOT + "/devices/" + state.deviceId;
             return [
                 {
-                    update: { name: p, fields: { name: str(data.name), phone: str(data.phone), nationalId: str(data.nationalId), deviceId: str(state.deviceId), uid: str(a.uid) } },
+                    update: { name: p, fields: { name: str(data.name), phone: str(data.phone), nationalId: str(data.nationalId), deviceId: str(state.deviceId), uid: str(a.uid), program: str(data.program) } },
                     updateTransforms: [{ fieldPath: "createdAt", setToServerValue: "REQUEST_TIME" }],
                     currentDocument: { exists: false }
                 },
@@ -422,7 +444,7 @@
             ];
         }).then(function (r) {
             if (r.ok) {
-                cacheProfile({ name: data.name, phone: data.phone, nationalId: data.nationalId, deviceId: state.deviceId });
+                cacheProfile({ name: data.name, phone: data.phone, nationalId: data.nationalId, deviceId: state.deviceId, program: data.program });
                 btn.textContent = "حفظ البيانات";
                 showHome();
                 return;
@@ -541,6 +563,128 @@
             .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
     }
 
+    // ---------- البرنامج والمقررات ----------
+    var CAT = null, showAllCourses = false;
+    function loadCatalog() {
+        if (CAT) return Promise.resolve(CAT);
+        return timeoutFetch("catalog.json", {}, 15000).then(function (r) { if (!r.ok) throw new Error("catalog"); return r.json(); })
+            .then(function (j) { CAT = j; return j; });
+    }
+    function progById(id) { var l = (CAT && CAT.programs) || []; for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return null; }
+    function fillProgramSelect(sel) {
+        sel.innerHTML = "";
+        var o0 = document.createElement("option"); o0.value = ""; o0.textContent = "-- اختر برنامجك --"; sel.appendChild(o0);
+        CAT.programs.forEach(function (p) { var o = document.createElement("option"); o.value = p.id; o.textContent = p.name; sel.appendChild(o); });
+    }
+    function commitAfter(gate, w) {
+        return gate.then(function () {
+            return commit(function (a) { var ws = w(a); if (!state.cc) delete ws[0].update.fields.courseCode; return ws; });
+        });
+    }
+    loadCatalog().then(function () { fillProgramSelect($("r-prog")); }).catch(function () { $("e-prog").textContent = "تعذّر تحميل قائمة البرامج. تأكد من الإنترنت ثم أعد فتح الصفحة."; });
+
+    function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+    function openCourses() {
+        show("courses");
+        $("c-list").replaceChildren(el("div", "muted", "جاري التحميل..."));
+        loadCatalog().then(function () {
+            if (!state.profile.program) renderPick(); else renderCourses();
+        }).catch(function () { $("c-list").replaceChildren(el("div", "err", "تعذّر التحميل. تأكد من الإنترنت ثم حاول مرة أخرى.")); });
+    }
+    function renderPick() {
+        var box = $("c-list"); box.replaceChildren();
+        box.appendChild(el("p", "muted", "اختر برنامجك (تخصصك) لتظهر مقرراتك. يُحدَّد مرة واحدة فقط، وللتعديل تواصل مع المشرف."));
+        var sel = el("select"); sel.id = "c-prog"; fillProgramSelect(sel); box.appendChild(sel);
+        var err = el("div", "err"); box.appendChild(err);
+        var btn = el("button", null, "حفظ البرنامج"); box.appendChild(btn);
+        btn.addEventListener("click", function () {
+            var v = sel.value; if (!v) { err.textContent = "اختر برنامجك أولًا"; return; }
+            if (!window.confirm("البرنامج: " + progById(v).name + "\nلا يمكن تغييره لاحقًا. متأكد؟")) return;
+            btn.disabled = true;
+            var nid = state.profile.nationalId;
+            commit(function () {
+                return [{ update: { name: ROOT + "/profiles/" + nid, fields: { program: str(v) } }, updateMask: { fieldPaths: ["program"] }, currentDocument: { exists: true } }];
+            }).then(function (r) {
+                if (r.ok) { var p = state.profile; p.program = v; cacheProfile(p); renderCourses(); return; }
+                // ربما لديه برنامج محفوظ بالفعل على الخادم
+                return docGet("/profiles/" + encodeURIComponent(nid)).then(function (pr) { return pr.ok ? pr.json() : null; }).then(function (pd) {
+                    var sp = pd && sv(pd.fields, "program");
+                    if (sp) { var p = state.profile; p.program = sp; cacheProfile(p); renderCourses(); }
+                    else { err.textContent = "تعذّر الحفظ. تواصل مع المشرف."; btn.disabled = false; }
+                });
+            }).catch(function () { err.textContent = "تعذّر الاتصال."; btn.disabled = false; });
+        });
+    }
+    function fetchStats(codes) {
+        var chunks = [], i; for (i = 0; i < codes.length; i += 50) chunks.push(codes.slice(i, i + 50));
+        return Promise.all(chunks.map(function (ch) {
+            return authed(function (a) {
+                return timeoutFetch(DOCS + ":batchGet?key=" + API_KEY, {
+                    method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.idToken },
+                    body: JSON.stringify({ documents: ch.map(function (c) { return ROOT + "/courseStats/" + c; }) })
+                });
+            }).then(function (r) { if (!r.ok) throw new Error("stats"); return r.json(); });
+        })).then(function (parts) {
+            var out = {};
+            parts.forEach(function (arr) { arr.forEach(function (x) {
+                if (x.found) { var code = x.found.name.split("/").pop(); var h = x.found.fields && x.found.fields.held; out[code] = Number(h && (h.integerValue || h.doubleValue) || 0); }
+            }); });
+            return out;
+        });
+    }
+    function fetchMine() {
+        return authed(function (a) {
+            return timeoutFetch(DOCS + ":runQuery?key=" + API_KEY, {
+                method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.idToken },
+                body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "attendance" }],
+                    where: { fieldFilter: { field: { fieldPath: "nationalId" }, op: "EQUAL", value: { stringValue: state.profile.nationalId } } },
+                    select: { fields: [{ fieldPath: "courseCode" }] } } })
+            });
+        }).then(function (r) { if (!r.ok) throw new Error("mine"); return r.json(); }).then(function (arr) {
+            var out = {};
+            arr.forEach(function (x) { if (x.document) { var c = sv(x.document.fields, "courseCode"); if (c) out[c] = (out[c] || 0) + 1; } });
+            return out;
+        });
+    }
+    function renderCourses() {
+        var p = state.profile, prog = progById(p.program), box = $("c-list");
+        if (!prog) { box.replaceChildren(el("div", "err", "برنامجك غير موجود في القائمة. تواصل مع المشرف.")); return; }
+        box.replaceChildren(el("div", "muted", "جاري التحميل..."));
+        var codes = prog.courses.map(function (c) { return c[0]; });
+        Promise.all([fetchStats(codes), fetchMine()]).then(function (res) {
+            var held = res[0], mine = res[1];
+            box.replaceChildren();
+            box.appendChild(el("div", "lock", "🎓 " + prog.name));
+            var shown = 0, lastLevel = null;
+            prog.courses.forEach(function (c) {
+                var h = held[c[0]] || 0, a = mine[c[0]] || 0;
+                if (!showAllCourses && !h && !a) return;
+                shown++;
+                if (c[2] !== lastLevel) { lastLevel = c[2]; box.appendChild(el("h3", "lvl", c[2] ? "المستوى " + c[2] : "متطلبات عامة")); }
+                var row = el("div", "crs");
+                row.appendChild(el("div", "crs-n", c[1] + " (" + c[0] + ")"));
+                if (!h && !a) { row.appendChild(el("div", "muted", "لم تبدأ محاضرات مسجّلة بعد")); }
+                else {
+                    var total = Math.max(h, a), miss = total - a, pct = total ? Math.round(miss * 100 / total) : 0;
+                    var cls = pct > 25 ? "bad-t" : pct > 10 ? "warn-t" : "ok-t";
+                    var txt = pct > 25 ? "⛔ معرّض للحرمان" : pct > 10 ? "⚠️ غياب مرتفع" : "✅ منتظم";
+                    row.appendChild(el("div", "crs-s", "حضرت " + a + " من " + total + " محاضرة · غبت " + miss));
+                    var bar = el("div", "bar"), fill = el("i"); fill.style.width = (total ? Math.round(a * 100 / total) : 0) + "%"; bar.appendChild(fill); row.appendChild(bar);
+                    row.appendChild(el("div", "crs-t " + cls, txt + " (غياب " + pct + "%)"));
+                }
+                box.appendChild(row);
+            });
+            if (!shown) box.appendChild(el("p", "muted", "لا توجد محاضرات مسجّلة لمقرراتك حتى الآن."));
+            var tg = el("button", "btn-ghost", showAllCourses ? "إخفاء المقررات التي لم تبدأ" : "عرض كل مقررات البرنامج");
+            tg.addEventListener("click", function () { showAllCourses = !showAllCourses; renderCourses(); });
+            box.appendChild(tg);
+            box.appendChild(el("p", "muted", "تُحسب النسب من المحاضرات التي أنشأها المشرفون في النظام. وفق اللائحة: الغياب فوق 25% قد يؤدي إلى الحرمان."));
+        }).catch(function () { box.replaceChildren(el("div", "err", "تعذّر تحميل حضورك. تأكد من الإنترنت ثم حاول مرة أخرى.")); });
+    }
+    $("h-courses").addEventListener("click", openCourses);
+    $("c-back").addEventListener("click", showHome);
+
     function submitAttendance(q) {
         state.last = q;
         $("boot-text").textContent = "جاري تسجيل حضورك...";
@@ -548,14 +692,15 @@
         var p = state.profile;
 
         var sessionP = fetchSession(q.session);
+        var gate = sessionP.then(function (sd0) { state.cc = sv(sd0 && sd0.fields, "courseCode"); });
 
-        commit(function (a) {
+        commitAfter(gate, function (a) {
             return [{
                 update: {
                     name: ROOT + "/attendance/" + q.session + "_" + p.nationalId,
                     fields: {
                         sessionId: str(q.session), studentName: str(p.name), nationalId: str(p.nationalId),
-                        phone: str(p.phone), deviceId: str(state.deviceId), token: str(q.token)
+                        phone: str(p.phone), deviceId: str(state.deviceId), token: str(q.token), courseCode: str(state.cc || "")
                     }
                 },
                 updateTransforms: [{ fieldPath: "timestamp", setToServerValue: "REQUEST_TIME" }],
