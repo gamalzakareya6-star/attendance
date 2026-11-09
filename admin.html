@@ -150,7 +150,7 @@
         <div class="card" id="new-session-card">
             <h3>فتح جلسة حضور جديدة</h3>
             <div class="grid2">
-                <div><label for="s-prog">البرنامج</label><select id="s-prog"></select></div>
+                <div><label for="s-prog">القسم</label><select id="s-prog"></select></div>
                 <div><label for="s-course">المقرر</label><select id="s-course"></select></div>
             </div>
             <label for="subject-name">اسم المحاضرة</label>
@@ -220,7 +220,7 @@
         <div class="card">
             <h3>حضور وغياب طلاب مقرر</h3>
             <div class="grid2">
-                <div><label for="c-prog">البرنامج</label><select id="c-prog"></select></div>
+                <div><label for="c-prog">القسم</label><select id="c-prog"></select></div>
                 <div><label for="c-course">المقرر</label><select id="c-course"></select></div>
             </div>
             <button id="c-load">عرض الكشف</button>
@@ -318,9 +318,8 @@
     // ===== إعدادات يمكنك تعديلها =====
     const REFRESH_OPTIONS = [5, 10, 15, 20, 30, 40, 50, 60];
     const SPECIALIZATIONS = [
-        "علم الحيوان", "علم النبات", "الكيمياء", "الفيزياء", "الجيولوجيا",
-        "الرياضيات البحتة وعلوم الحاسب", "الكيمياء الحيوية", "علم الحشرات",
-        "الميكروبيولوجي", "أخرى"
+        "الفيزياء", "الرياضيات", "الكيمياء", "علم الحيوان", "الجيولوجيا", "علم النبات",
+        "علم الحشرات", "الكيمياء الحيوية", "الجيوفيزياء وجيولوجيا البترول", "أخرى"
     ];
     const GRACE_SECONDS = 20;
     const SESSION_MINUTES = 45;
@@ -410,29 +409,30 @@
         return CAT;
     }
     const progById = (id) => (CAT && CAT.programs.find(p => p.id === id)) || null;
+    const deptById = (id) => (CAT && CAT.departments.find(p => p.id === id)) || null;
     function fillProgs(sel, placeholder) {
         sel.replaceChildren();
         const o0 = document.createElement('option'); o0.value = ''; o0.textContent = placeholder; sel.appendChild(o0);
-        CAT.programs.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; sel.appendChild(o); });
+        CAT.departments.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; sel.appendChild(o); });
     }
     function fillCourses(sel, pid, placeholder) {
         sel.replaceChildren();
         const o0 = document.createElement('option'); o0.value = ''; o0.textContent = placeholder; sel.appendChild(o0);
-        const p = progById(pid);
+        const p = deptById(pid);
         if (!p) return;
         p.courses.forEach(c => { const o = document.createElement('option'); o.value = c[0]; o.textContent = `${c[1]} (${c[0]})`; sel.appendChild(o); });
     }
     function courseName(pid, code) {
-        const p = progById(pid); const c = p && p.courses.find(x => x[0] === code);
+        const p = deptById(pid); const c = p && p.courses.find(x => x[0] === code);
         return c ? c[1] : code;
     }
     async function initCatalogUI() {
         try {
             await loadCatalog();
             fillProgs($('s-prog'), '-- بدون مقرر (محاضرة حرة) --');
-            fillCourses($('s-course'), '', '-- اختر البرنامج أولًا --');
-            fillProgs($('c-prog'), '-- اختر البرنامج --');
-            fillCourses($('c-course'), '', '-- اختر البرنامج أولًا --');
+            fillCourses($('s-course'), '', '-- اختر القسم أولًا --');
+            fillProgs($('c-prog'), '-- اختر القسم --');
+            fillCourses($('c-course'), '', '-- اختر القسم أولًا --');
             $('s-prog').addEventListener('change', () => fillCourses($('s-course'), $('s-prog').value, '-- اختر المقرر --'));
             $('s-course').addEventListener('change', () => {
                 const code = $('s-course').value;
@@ -448,17 +448,19 @@
     // كشف مقرر: كل طالب في البرنامج مع عدد حضوره وغيابه
     async function loadCourseSheet() {
         const pid = $('c-prog').value, code = $('c-course').value;
-        if (!pid || !code) return toast('اختر البرنامج والمقرر', 'err');
+        if (!pid || !code) return toast('اختر القسم والمقرر', 'err');
         await busy($('c-load'), async () => {
             try {
-                const [stu, att, st] = await Promise.all([
-                    getDocs(query(collection(db, 'profiles'), where('program', '==', pid))),
+                const dep = deptById(pid), crs = dep.courses.find(x => x[0] === code);
+                const progIds = (crs && crs[5]) || [];
+                const [stuSnaps, att, st] = await Promise.all([
+                    Promise.all(progIds.map(pr => getDocs(query(collection(db, 'profiles'), where('program', '==', pr))))),
                     getDocs(query(collection(db, 'attendance'), where('courseCode', '==', code))),
                     getDoc(doc(db, 'courseStats', code))
                 ]);
                 const held = st.exists() ? Number(st.data().held || 0) : 0;
                 const map = new Map();
-                stu.forEach(d => { const p = d.data(); map.set(d.id, { nid: d.id, name: p.name, phone: p.phone, own: true, dates: [] }); });
+                stuSnaps.forEach(sn => sn.forEach(d => { const p = d.data(); map.set(d.id, { nid: d.id, name: p.name, phone: p.phone, own: true, dates: [] }); }));
                 att.forEach(d => {
                     const a = d.data(); if (!a.nationalId) return;
                     if (!map.has(a.nationalId)) map.set(a.nationalId, { nid: a.nationalId, name: a.studentName, phone: a.phone || '', own: false, dates: [] });
@@ -471,7 +473,7 @@
                     r.pct = total ? Math.round(r.missed * 100 / total) : 0;
                     return r;
                 }).sort((a, b) => b.missed - a.missed || String(a.name).localeCompare(String(b.name), 'ar'));
-                sheetMeta = { pid, code, total, name: courseName(pid, code), prog: progById(pid).name };
+                sheetMeta = { pid, code, total, name: courseName(pid, code), prog: dep.name };
                 $('c-summary').textContent = `${sheetMeta.name} (${code}) • ${sheetMeta.prog} • المحاضرات المنعقدة: ${total} • الطلاب: ${sheetRows.length}`;
                 $('c-result').classList.remove('hidden');
                 renderSheet();
@@ -483,7 +485,7 @@
         const box = $('c-list');
         const term = $('c-search').value.trim().toLowerCase();
         const rows = term ? sheetRows.filter(r => `${r.name} ${r.nid}`.toLowerCase().includes(term)) : sheetRows;
-        if (!rows.length) { setEmpty(box, sheetRows.length ? 'لا نتائج' : 'لا يوجد طلاب في هذا البرنامج بعد'); return; }
+        if (!rows.length) { setEmpty(box, sheetRows.length ? 'لا نتائج' : 'لا يوجد طلاب مسجلون في برامج هذا المقرر بعد'); return; }
         const frag = document.createDocumentFragment();
         rows.forEach((r, i) => {
             const row = el('div', 'row');
@@ -491,7 +493,7 @@
             const main = el('div', 'main');
             main.appendChild(el('div', 'name', r.name));
             const st = statusOf(r.pct, sheetMeta.total);
-            main.appendChild(el('div', 'meta', `${r.nid}${r.own ? '' : ' • من برنامج آخر'} • ${st}`));
+            main.appendChild(el('div', 'meta', `${r.nid}${r.own ? '' : ' • خارج برامج المقرر'} • ${st}`));
             const det = el('div', 'meta', 'حضر في: ' + (r.dates.map(fmtTime).join(' ، ') || '—'));
             det.style.display = 'none';
             main.appendChild(det);
@@ -739,7 +741,7 @@
                 const cc = $('s-course').value, pid = $('s-prog').value;
                 const ref = doc(collection(db, "sessions"));
                 if (cc) {
-                    data.courseCode = cc; data.program = pid;
+                    data.courseCode = cc; data.department = pid;
                     const sref = doc(db, "courseStats", cc);
                     const ss = await getDoc(sref);
                     const b = writeBatch(db);
