@@ -38,8 +38,16 @@ jobs:
       - name: Create Android project
         run: npx cap add android
 
-      - name: Camera permission and no backup
+      - name: Use the fixed signing key
+        # مفتاح توقيع ثابت: يمنع تغيّر معرّف الجهاز مع كل بناء ويسمح بالتحديث فوق النسخة القديمة
         run: |
+          mkdir -p ~/.android
+          cp debug.keystore ~/.android/debug.keystore
+
+      - name: Camera permission, no backup, rising version number
+        run: |
+          sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          grep -n "versionCode" android/app/build.gradle
           M=android/app/src/main/AndroidManifest.xml
           sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application#' "$M"
           sed -i 's#android:allowBackup="true"#android:allowBackup="false"#' "$M"

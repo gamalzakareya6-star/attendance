@@ -192,16 +192,36 @@
         });
     }
 
-    // ---------- الدخول المجهول (هوية ثابتة لهذا التطبيق) ----------
+    // ---------- الدخول: هوية ثابتة مشتقة من معرّف الجهاز ----------
+    // نفس الجهاز يحصل دائمًا على نفس الهوية، حتى بعد حذف التطبيق وتثبيته من جديد،
+    // فتظهر بياناته المسجّلة تلقائيًا.
     function readAuth() { try { return JSON.parse(lsGet(AUTH_KEY) || "null"); } catch (e) { return null; } }
     function saveAuth(o) {
         var a = { idToken: o.idToken, refresh: o.refresh, uid: o.uid, exp: Date.now() + Number(o.expiresIn || 3600) * 1000 };
         lsSet(AUTH_KEY, JSON.stringify(a));
         return a;
     }
-    function signUp() {
-        return timeoutFetch("https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" + API_KEY, {
-            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ returnSecureToken: true })
+    function sha256Hex(s) {
+        return crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)).then(function (buf) {
+            return Array.prototype.map.call(new Uint8Array(buf), function (x) { return ("0" + x.toString(16)).slice(-2); }).join("");
+        });
+    }
+    function deviceCreds() {
+        return sha256Hex("mnu-attendance|pw|v1|" + state.deviceId).then(function (pw) {
+            return { email: "d-" + state.deviceId.toLowerCase() + "@devices.mnu-attendance.app", password: pw };
+        });
+    }
+    function passwordAuth() {
+        return deviceCreds().then(function (c) {
+            function call(endpoint) {
+                return timeoutFetch("https://identitytoolkit.googleapis.com/v1/accounts:" + endpoint + "?key=" + API_KEY, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email: c.email, password: c.password, returnSecureToken: true })
+                });
+            }
+            return call("signInWithPassword").then(function (r) {
+                return r.ok ? r : call("signUp");          // أول مرة: لا يوجد حساب لهذا الجهاز بعد
+            });
         }).then(function (r) { if (!r.ok) throw new Error("auth"); return r.json(); })
           .then(function (j) { return saveAuth({ idToken: j.idToken, refresh: j.refreshToken, uid: j.localId, expiresIn: j.expiresIn }); });
     }
@@ -212,12 +232,12 @@
         }).then(function (r) { if (!r.ok) throw new Error("refresh"); return r.json(); })
           .then(function (j) { return saveAuth({ idToken: j.id_token, refresh: j.refresh_token, uid: j.user_id, expiresIn: j.expires_in }); });
     }
-    // لا نُنشئ هوية جديدة بصمت إن وُجدت هوية سابقة: الهوية مربوطة ببيانات الطالب
+    // الهوية مشتقة من الجهاز، فإن فشل التجديد نسجّل الدخول من جديد بنفس الهوية
     function getAuth(force) {
         var c = readAuth();
         if (c && !force && c.exp > Date.now() + 60000) return Promise.resolve(c);
-        if (c && c.refresh) return refreshAuth(c.refresh);
-        return signUp();
+        if (c && c.refresh) return refreshAuth(c.refresh).catch(passwordAuth);
+        return passwordAuth();
     }
 
     function authed(makeRequest) {
