@@ -740,16 +740,15 @@
                 };
                 const cc = $('s-course').value, pid = $('s-prog').value;
                 const ref = doc(collection(db, "sessions"));
+                if (cc) { data.courseCode = cc; data.department = pid; }
+                await setDoc(ref, data);
                 if (cc) {
-                    data.courseCode = cc; data.department = pid;
-                    const sref = doc(db, "courseStats", cc);
-                    const ss = await getDoc(sref);
-                    const b = writeBatch(db);
-                    b.set(ref, data);
-                    b.set(sref, { held: (ss.exists() ? Number(ss.data().held || 0) : 0) + 1 });
-                    await b.commit();      // الجلسة وعدّاد المحاضرات معًا
-                } else {
-                    await setDoc(ref, data);
+                    // عدّاد المحاضرات المنعقدة للمقرر (لا يمنع فتح الجلسة إن تعذّر)
+                    try {
+                        const sref = doc(db, "courseStats", cc);
+                        const ss = await getDoc(sref);
+                        await setDoc(sref, { held: (ss.exists() ? Number(ss.data().held || 0) : 0) + 1 });
+                    } catch (e2) { console.error(e2); toast("فُتحت الجلسة لكن تعذّر تحديث عدّاد المحاضرات: " + (e2.code || e2.message), "err"); }
                 }
                 sessionsCache.set(ref.id, { id:ref.id, ...data });
                 await startDynamicQR(ref.id, refreshSeconds, subject);
@@ -761,7 +760,7 @@
                 $('subject-name').value = "";
             } catch (e) {
                 console.error(e);
-                toast("تعذّر إنشاء الجلسة. تأكد من نشر القواعد ووجود مستندك في admins", "err");
+                toast("تعذّر إنشاء الجلسة (" + (e.code || e.message || "") + "). تأكد من نشر القواعد ووجود مستندك في admins", "err");
             }
         });
     }
