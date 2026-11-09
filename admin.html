@@ -137,6 +137,7 @@
 <nav class="tabs" id="tabs">
     <button class="tab active" data-tab="session"><span class="ic">🎯</span>جلسة</button>
     <button class="tab" data-tab="attendance"><span class="ic">📋</span>الحضور</button>
+    <button class="tab" data-tab="course"><span class="ic">📚</span>كشف المقرر</button>
     <button class="tab" data-tab="profile"><span class="ic">👤</span>ملفي</button>
     <button class="tab hidden" data-tab="admins" id="tab-admins"><span class="ic">👥</span>المشرفون</button>
     <button class="tab hidden" data-tab="students" id="tab-students"><span class="ic">🎓</span>الطلاب</button>
@@ -148,6 +149,10 @@
     <section class="panel" data-panel="session">
         <div class="card" id="new-session-card">
             <h3>فتح جلسة حضور جديدة</h3>
+            <div class="grid2">
+                <div><label for="s-prog">البرنامج</label><select id="s-prog"></select></div>
+                <div><label for="s-course">المقرر</label><select id="s-course"></select></div>
+            </div>
             <label for="subject-name">اسم المحاضرة</label>
             <input type="text" id="subject-name" placeholder="مثال: كيمياء تحليلية" maxlength="80" autocomplete="off">
             <div class="grid2">
@@ -211,6 +216,25 @@
     </section>
 
     <!-- ===== ملفي ===== -->
+    <section class="panel hidden" data-panel="course">
+        <div class="card">
+            <h3>حضور وغياب طلاب مقرر</h3>
+            <div class="grid2">
+                <div><label for="c-prog">البرنامج</label><select id="c-prog"></select></div>
+                <div><label for="c-course">المقرر</label><select id="c-course"></select></div>
+            </div>
+            <button id="c-load">عرض الكشف</button>
+        </div>
+        <div class="card hidden" id="c-result">
+            <div class="muted" id="c-summary" style="margin-bottom:12px;"></div>
+            <div class="toolbar">
+                <input type="search" id="c-search" placeholder="🔍 بحث بالاسم أو الرقم القومي">
+                <button class="btn-success" id="c-export" style="width:auto; flex:none;">⬇ تصدير Excel</button>
+            </div>
+            <div class="list" id="c-list"></div>
+        </div>
+    </section>
+
     <section class="panel hidden" data-panel="profile">
         <div class="card">
             <h3>ملفي الشخصي</h3>
@@ -314,6 +338,8 @@
     let attRows = [];
     let viewedLogsUid = null, logsDirty = true, adminsLoaded = false, sessionsLoaded = false;
     let wakeLock = null;
+    const PUBLIC_BASE = 'https://gamalzakareya6-star.github.io/attendance/';
+    let CAT = null, sheetRows = [], sheetMeta = null;
     const qr = { sessionId:null, token:null, refresh:20, timeLeft:0, full:false, subject:'' };
     const sessionsCache = new Map();
 
@@ -375,6 +401,123 @@
     }
 
     // ---------- التبويبات ----------
+    // ---------- البرامج والمقررات ----------
+    async function loadCatalog() {
+        if (CAT) return CAT;
+        const r = await fetch('catalog.json', { cache: 'no-cache' });
+        if (!r.ok) throw new Error('catalog');
+        CAT = await r.json();
+        return CAT;
+    }
+    const progById = (id) => (CAT && CAT.programs.find(p => p.id === id)) || null;
+    function fillProgs(sel, placeholder) {
+        sel.replaceChildren();
+        const o0 = document.createElement('option'); o0.value = ''; o0.textContent = placeholder; sel.appendChild(o0);
+        CAT.programs.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; sel.appendChild(o); });
+    }
+    function fillCourses(sel, pid, placeholder) {
+        sel.replaceChildren();
+        const o0 = document.createElement('option'); o0.value = ''; o0.textContent = placeholder; sel.appendChild(o0);
+        const p = progById(pid);
+        if (!p) return;
+        p.courses.forEach(c => { const o = document.createElement('option'); o.value = c[0]; o.textContent = `${c[1]} (${c[0]})`; sel.appendChild(o); });
+    }
+    function courseName(pid, code) {
+        const p = progById(pid); const c = p && p.courses.find(x => x[0] === code);
+        return c ? c[1] : code;
+    }
+    async function initCatalogUI() {
+        try {
+            await loadCatalog();
+            fillProgs($('s-prog'), '-- بدون مقرر (محاضرة حرة) --');
+            fillCourses($('s-course'), '', '-- اختر البرنامج أولًا --');
+            fillProgs($('c-prog'), '-- اختر البرنامج --');
+            fillCourses($('c-course'), '', '-- اختر البرنامج أولًا --');
+            $('s-prog').addEventListener('change', () => fillCourses($('s-course'), $('s-prog').value, '-- اختر المقرر --'));
+            $('s-course').addEventListener('change', () => {
+                const code = $('s-course').value;
+                if (code) $('subject-name').value = courseName($('s-prog').value, code);
+            });
+            $('c-prog').addEventListener('change', () => fillCourses($('c-course'), $('c-prog').value, '-- اختر المقرر --'));
+            $('c-load').addEventListener('click', loadCourseSheet);
+            $('c-search').addEventListener('input', renderSheet);
+            $('c-export').addEventListener('click', exportSheet);
+        } catch (e) { console.error(e); toast('تعذّر تحميل قائمة البرامج والمقررات', 'err'); }
+    }
+
+    // كشف مقرر: كل طالب في البرنامج مع عدد حضوره وغيابه
+    async function loadCourseSheet() {
+        const pid = $('c-prog').value, code = $('c-course').value;
+        if (!pid || !code) return toast('اختر البرنامج والمقرر', 'err');
+        await busy($('c-load'), async () => {
+            try {
+                const [stu, att, st] = await Promise.all([
+                    getDocs(query(collection(db, 'profiles'), where('program', '==', pid))),
+                    getDocs(query(collection(db, 'attendance'), where('courseCode', '==', code))),
+                    getDoc(doc(db, 'courseStats', code))
+                ]);
+                const held = st.exists() ? Number(st.data().held || 0) : 0;
+                const map = new Map();
+                stu.forEach(d => { const p = d.data(); map.set(d.id, { nid: d.id, name: p.name, phone: p.phone, own: true, dates: [] }); });
+                att.forEach(d => {
+                    const a = d.data(); if (!a.nationalId) return;
+                    if (!map.has(a.nationalId)) map.set(a.nationalId, { nid: a.nationalId, name: a.studentName, phone: a.phone || '', own: false, dates: [] });
+                    map.get(a.nationalId).dates.push(a.timestamp);
+                });
+                const total = Math.max(held, ...Array.from(map.values()).map(r => r.dates.length), 0);
+                sheetRows = Array.from(map.values()).map(r => {
+                    r.dates.sort((x, y) => (toDate(x)?.getTime() ?? 0) - (toDate(y)?.getTime() ?? 0));
+                    r.attended = r.dates.length; r.missed = Math.max(0, total - r.attended);
+                    r.pct = total ? Math.round(r.missed * 100 / total) : 0;
+                    return r;
+                }).sort((a, b) => b.missed - a.missed || String(a.name).localeCompare(String(b.name), 'ar'));
+                sheetMeta = { pid, code, total, name: courseName(pid, code), prog: progById(pid).name };
+                $('c-summary').textContent = `${sheetMeta.name} (${code}) • ${sheetMeta.prog} • المحاضرات المنعقدة: ${total} • الطلاب: ${sheetRows.length}`;
+                $('c-result').classList.remove('hidden');
+                renderSheet();
+            } catch (e) { console.error(e); toast('تعذّر تحميل الكشف. تأكد من نشر القواعد الجديدة', 'err'); }
+        });
+    }
+    function statusOf(pct, total) { return !total ? '' : pct > 25 ? 'معرّض للحرمان' : pct > 10 ? 'تنبيه' : 'منتظم'; }
+    function renderSheet() {
+        const box = $('c-list');
+        const term = $('c-search').value.trim().toLowerCase();
+        const rows = term ? sheetRows.filter(r => `${r.name} ${r.nid}`.toLowerCase().includes(term)) : sheetRows;
+        if (!rows.length) { setEmpty(box, sheetRows.length ? 'لا نتائج' : 'لا يوجد طلاب في هذا البرنامج بعد'); return; }
+        const frag = document.createDocumentFragment();
+        rows.forEach((r, i) => {
+            const row = el('div', 'row');
+            row.appendChild(el('div', 'n', i + 1));
+            const main = el('div', 'main');
+            main.appendChild(el('div', 'name', r.name));
+            const st = statusOf(r.pct, sheetMeta.total);
+            main.appendChild(el('div', 'meta', `${r.nid}${r.own ? '' : ' • من برنامج آخر'} • ${st}`));
+            const det = el('div', 'meta', 'حضر في: ' + (r.dates.map(fmtTime).join(' ، ') || '—'));
+            det.style.display = 'none';
+            main.appendChild(det);
+            row.appendChild(main);
+            const b = el('div', 'badge', `${r.attended}/${sheetMeta.total} • غياب ${r.missed}`);
+            if (r.pct > 25 && sheetMeta.total) b.style.cssText = 'background:var(--danger-soft);color:var(--danger)';
+            row.appendChild(b);
+            row.style.cursor = 'pointer';
+            row.addEventListener('click', () => { det.style.display = det.style.display === 'none' ? 'block' : 'none'; });
+            frag.appendChild(row);
+        });
+        box.replaceChildren(frag);
+    }
+    function exportSheet() {
+        if (!sheetRows.length) return toast('لا توجد بيانات لتصديرها', 'err');
+        const asText = (v) => (/^\d{6,}$/.test(String(v || '')) ? `="${v}"` : csvSafe(v || ''));
+        let csv = '\ufeffم,اسم الطالب,الرقم القومي,الهاتف,حضر,غاب,نسبة الغياب %,الحالة\n';
+        sheetRows.forEach((r, i) => {
+            csv += `${i + 1},${csvSafe(r.name)},${asText(r.nid)},${asText(r.phone)},${r.attended},${r.missed},${r.pct},${csvSafe(statusOf(r.pct, sheetMeta.total))}\n`;
+        });
+        const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+        const a = document.createElement('a');
+        a.href = url; a.download = `course_${sheetMeta.code}_${Date.now()}.csv`; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
     function setTab(name) {
         document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
         document.querySelectorAll('.panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
@@ -423,6 +566,7 @@
         setTab(tab);
         // تحميل الجلسات في الخلفية دون تعطيل الواجهة
         loadSessionsList();
+        initCatalogUI();
     }
 
     async function logoutAdmin() {
@@ -456,7 +600,8 @@
 
     function drawQR() {
         if (!qr.token || typeof QRCode === 'undefined') return;
-        const base = window.location.href.split('?')[0].replace(/[^/]*$/, '');
+        // داخل تطبيق الأندرويد لا يوجد رابط عام، فنستخدم عنوان الموقع الثابت
+        const base = /github\.io$/.test(window.location.hostname) ? window.location.href.split('?')[0].replace(/[^/]*$/, '') : PUBLIC_BASE;
         const url = `${base}student.html?session=${encodeURIComponent(qr.sessionId)}&token=${encodeURIComponent(qr.token)}`;
         const box = $('qrcode');
         box.innerHTML = "";
@@ -591,7 +736,19 @@
                     subject, specialization, createdBy:me.uid, createdByName:me.name || me.email,
                     createdAt:now, expiresAt:now + SESSION_MINUTES * 60 * 1000, active:true, refreshSeconds
                 };
-                const ref = await addDoc(collection(db, "sessions"), data);
+                const cc = $('s-course').value, pid = $('s-prog').value;
+                const ref = doc(collection(db, "sessions"));
+                if (cc) {
+                    data.courseCode = cc; data.program = pid;
+                    const sref = doc(db, "courseStats", cc);
+                    const ss = await getDoc(sref);
+                    const b = writeBatch(db);
+                    b.set(ref, data);
+                    b.set(sref, { held: (ss.exists() ? Number(ss.data().held || 0) : 0) + 1 });
+                    await b.commit();      // الجلسة وعدّاد المحاضرات معًا
+                } else {
+                    await setDoc(ref, data);
+                }
                 sessionsCache.set(ref.id, { id:ref.id, ...data });
                 await startDynamicQR(ref.id, refreshSeconds, subject);
                 logAction(`فتح جلسة: ${subject}`, ref.id);
@@ -749,6 +906,11 @@
                     att.docs.slice(i, i + 400).forEach(d => b.delete(d.ref));
                     await b.commit();
                 }
+                if (s && s.courseCode) {
+                    const sref = doc(db, "courseStats", s.courseCode);
+                    const ss = await getDoc(sref);
+                    if (ss.exists()) await setDoc(sref, { held: Math.max(0, Number(ss.data().held || 0) - 1) });
+                }
                 await deleteDoc(doc(db, "sessions", sid, "private", "code")).catch(() => {});
                 await deleteDoc(doc(db, "sessions", sid));
                 logAction(`حذف جلسة: ${s ? s.subject : sid}`);
@@ -838,7 +1000,8 @@
             row.appendChild(el('div', 'n', i + 1));
             const main = el('div', 'main');
             main.appendChild(el('div', 'name', s.name));
-            main.appendChild(el('div', 'meta', `${s.nationalId} • ${s.phone} • ${fmtTime(s.createdAt)}`));
+            const pn = s.program && progById(s.program) ? progById(s.program).name : 'بلا برنامج';
+            main.appendChild(el('div', 'meta', `${s.nationalId} • ${s.phone} • ${pn} • ${fmtTime(s.createdAt)}`));
             row.appendChild(main);
             const acts = el('div', 'acts');
             acts.appendChild(smallBtn("إعادة تعيين", "btn-danger", () => resetStudent(s)));

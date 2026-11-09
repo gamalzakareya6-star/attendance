@@ -71,10 +71,14 @@ service cloud.firestore {
     match /profiles/{nid} {
       allow get: if signedIn()
         && (resource == null || resource.data.uid == request.auth.uid || isAdmin());
-      allow list: if isSuper();
+      allow list: if isSuper()
+        // المشرف يعرض طلاب برنامج معيّن (استعلام where program == ...)
+        || (isAdmin() && resource.data.get('program', '') is string
+            && resource.data.get('program', '').matches('p[0-9]{2}'));
 
       allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['name', 'phone', 'nationalId', 'deviceId', 'uid', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['name', 'phone', 'nationalId', 'deviceId', 'uid', 'createdAt', 'program'])
+        && (!('program' in request.resource.data) || (request.resource.data.program is string && request.resource.data.program.matches('p[0-9]{2}')))
         && request.resource.data.keys().hasAll(['name', 'phone', 'nationalId', 'deviceId', 'uid', 'createdAt'])
         && request.resource.data.nationalId == nid
         && nid.matches('[23][0-9]{13}')
@@ -92,8 +96,28 @@ service cloud.firestore {
         && getAfter(devicePath(request.resource.data.deviceId)).data.nationalId == nid
         && getAfter(devicePath(request.resource.data.deviceId)).data.uid == request.auth.uid;
 
-      allow update: if false;
+      // صاحب الملف يحدد برنامجه مرة واحدة فقط (إن لم يكن محدّدًا)، والمشرف العام يغيّره
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['program'])
+        && request.resource.data.program is string
+        && request.resource.data.program.matches('p[0-9]{2}')
+        && (isSuper() || (resource.data.uid == request.auth.uid && !('program' in resource.data)));
       allow delete: if isSuper();   // إعادة التعيين
+    }
+
+    // عدّاد المحاضرات المنعقدة لكل مقرر: يزيد المشرف واحدًا عند فتح جلسة للمقرر
+    match /courseStats/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['held'])
+        && request.resource.data.held == 1
+        && code.matches('[A-Z]{1,3}[0-9]{3,4}');
+      allow update: if isSuper()
+        || (isAdmin()
+            && request.resource.data.keys().hasOnly(['held'])
+            && request.resource.data.held == resource.data.held + 1);
+      allow delete: if isSuper();
     }
 
     match /devices/{did} {
@@ -126,7 +150,11 @@ service cloud.firestore {
 
       allow create: if isAdmin()
         && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.keys().hasOnly(['subject', 'specialization', 'createdBy', 'createdByName', 'createdAt', 'expiresAt', 'active', 'refreshSeconds'])
+        && request.resource.data.keys().hasOnly(['subject', 'specialization', 'createdBy', 'createdByName', 'createdAt', 'expiresAt', 'active', 'refreshSeconds', 'courseCode', 'program'])
+        && (!('courseCode' in request.resource.data)
+            || (request.resource.data.courseCode.matches('[A-Z]{1,3}[0-9]{3,4}')
+                && request.resource.data.program.matches('p[0-9]{2}')
+                && (existsAfter(/databases/$(database)/documents/courseStats/$(request.resource.data.courseCode)))))
         && request.resource.data.subject is string
         && request.resource.data.subject.size() > 0
         && request.resource.data.subject.size() <= 80
@@ -150,11 +178,21 @@ service cloud.firestore {
       allow get: if resource != null && canManageSession(resource.data.sessionId);
       allow list: if canManageSession(resource.data.sessionId);
 
+      // الطالب يقرأ حضوره هو (استعلام where nationalId == ...)
+      allow get, list: if signedIn()
+        && resource.data.get('nationalId', '') is string
+        && resource.data.get('nationalId', '') != ''
+        && get(profilePath(resource.data.nationalId)).data.uid == request.auth.uid;
+
+      // أي مشرف يرى حضور مقرر (استعلام where courseCode == ...) لعرض كشف المقرر
+      allow list: if isAdmin() && resource.data.get('courseCode', '') != '';
+
       // تسجيل الطالب من التطبيق: يلزم ملف مسجّل على الجهاز نفسه، ورمز صالح، وجلسة فعّالة.
       // معرّف السجل = الجلسة + الرقم القومي، فلا يتكرر الطالب في الجلسة.
       allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['sessionId', 'studentName', 'nationalId', 'phone', 'deviceId', 'token', 'timestamp'])
+        && request.resource.data.keys().hasOnly(['sessionId', 'studentName', 'nationalId', 'phone', 'deviceId', 'token', 'timestamp', 'courseCode'])
         && request.resource.data.keys().hasAll(['sessionId', 'studentName', 'nationalId', 'phone', 'deviceId', 'token', 'timestamp'])
+        && request.resource.data.get('courseCode', '') == get(sessionPath(request.resource.data.sessionId)).data.get('courseCode', '')
         && attendanceId == request.resource.data.sessionId + '_' + request.resource.data.nationalId
         && request.resource.data.timestamp == request.time
         && exists(profilePath(request.resource.data.nationalId))

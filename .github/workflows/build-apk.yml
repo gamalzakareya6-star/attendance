@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APKs
 
 on:
   workflow_dispatch:
@@ -6,24 +6,26 @@ on:
     branches: [main]
     paths:
       - 'app/**'
+      - 'admin-app/**'
+      - 'admin.html'
+      - 'index.html'
+      - 'catalog.json'
       - '.github/workflows/build-apk.yml'
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  student:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: app
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -32,18 +34,27 @@ jobs:
       - name: Install packages
         run: npm install
 
-      - name: Add QR decoder to the app
-        run: cp node_modules/jsqr/dist/jsQR.js www/jsQR.js
+      - name: Add QR decoder and course catalog to the app
+        run: |
+          cp node_modules/jsqr/dist/jsQR.js www/jsQR.js
+          cp ../catalog.json www/catalog.json
 
       - name: Create Android project
         run: npx cap add android
 
-      - name: Camera permission and no backup
+      - name: Use the fixed signing key
+        # مفتاح توقيع ثابت: يمنع تغيّر معرّف الجهاز مع كل بناء ويسمح بالتحديث فوق النسخة القديمة
         run: |
+          mkdir -p ~/.android
+          cp debug.keystore ~/.android/debug.keystore
+
+      - name: Camera permission, no backup, rising version number
+        run: |
+          sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/" android/app/build.gradle
           M=android/app/src/main/AndroidManifest.xml
           sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application#' "$M"
           sed -i 's#android:allowBackup="true"#android:allowBackup="false"#' "$M"
-          grep -n "CAMERA\|allowBackup" "$M"
+          grep -n "CAMERA\|allowBackup\|versionCode" "$M" android/app/build.gradle
 
       - name: Sync web files
         run: npx cap sync android
@@ -52,18 +63,72 @@ jobs:
         working-directory: app/android
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Keep APK as a build artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: attendance-apk
+          name: student-apk
           path: app/android/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Publish APK as a release (public download link)
+  admin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install packages
+        run: npm install
+
+      - name: Copy the admin pages from the website
+        # الصفحات نفسها المستخدمة على الموقع: تعديل واحد يظهر في الموقع والتطبيق
+        run: |
+          mkdir -p www
+          cp ../index.html ../admin.html ../catalog.json www/
+
+      - name: Create Android project
+        run: npx cap add android
+
+      - name: Use the fixed signing key
+        run: |
+          mkdir -p ~/.android
+          cp ../app/debug.keystore ~/.android/debug.keystore
+
+      - name: Rising version number
+        run: sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/" android/app/build.gradle
+
+      - name: Sync web files
+        run: npx cap sync android
+
+      - name: Build APK
+        working-directory: admin-app/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: admin-apk
+          path: admin-app/android/app/build/outputs/apk/debug/app-debug.apk
+
+  release:
+    needs: [student, admin]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: apks
+      - name: Publish both APKs as a release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk attendance.apk
-          gh release create "v${{ github.run_number }}" attendance.apk \
+          cp apks/student-apk/app-debug.apk attendance.apk
+          cp apks/admin-apk/app-debug.apk attendance-admin.apk
+          gh release create "v${{ github.run_number }}" attendance.apk attendance-admin.apk \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Attendance app v${{ github.run_number }}" \
-            --notes "Debug build" --latest
+            --title "Attendance apps v${{ github.run_number }}" \
+            --notes "attendance.apk = تطبيق الطالب, attendance-admin.apk = تطبيق المشرف (debug builds)" --latest

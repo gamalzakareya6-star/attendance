@@ -1,0 +1,8 @@
+{
+  "appId": "eg.edu.mnu.attendance.admin",
+  "appName": "MNU Admin",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
