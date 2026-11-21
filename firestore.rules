@@ -22,6 +22,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/profiles/$(nid);
     }
 
+    function transferPath(code) {
+      return /databases/$(database)/documents/transfers/$(code);
+    }
+
     function devicePath(did) {
       return /databases/$(database)/documents/devices/$(did);
     }
@@ -102,7 +106,38 @@ service cloud.firestore {
         && request.resource.data.program is string
         && request.resource.data.program.matches('p[0-9]{2}')
         && (isSuper() || (resource.data.uid == request.auth.uid && !('program' in resource.data)));
+      // ربط الملف بجهاز جديد (التطبيق) برمز نقل أنشأه صاحب الملف الحالي من المتصفح:
+      // يتغيّر uid و deviceId فقط، بشرط وجود رمز صالح لنفس الرقم القومي وصاحبه الحالي ولم تمضِ 30 دقيقة.
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid', 'deviceId'])
+        && request.resource.data.uid == request.auth.uid
+        && resource.data.uid != request.auth.uid
+        && request.resource.data.deviceId is string
+        && request.resource.data.deviceId.size() >= 8
+        && request.resource.data.deviceId.size() <= 64
+        && existsAfter(devicePath(request.resource.data.deviceId))
+        && getAfter(devicePath(request.resource.data.deviceId)).data.nationalId == nid
+        && getAfter(devicePath(request.resource.data.deviceId)).data.uid == request.auth.uid
+        && getAfter(devicePath(request.resource.data.deviceId)).data.claim is string
+        && exists(transferPath(getAfter(devicePath(request.resource.data.deviceId)).data.claim))
+        && get(transferPath(getAfter(devicePath(request.resource.data.deviceId)).data.claim)).data.nationalId == nid
+        && get(transferPath(getAfter(devicePath(request.resource.data.deviceId)).data.claim)).data.uid == resource.data.uid
+        && request.time < get(transferPath(getAfter(devicePath(request.resource.data.deviceId)).data.claim)).data.createdAt + duration.value(30, 'm');
       allow delete: if isSuper();   // إعادة التعيين
+    }
+
+    // رموز نقل الملف إلى التطبيق: ينشئها صاحب الملف فقط، والرمز عشوائي سري طويل
+    match /transfers/{code} {
+      allow create: if signedIn()
+        && code.matches('[a-f0-9]{32}')
+        && request.resource.data.keys().hasOnly(['nationalId', 'uid', 'createdAt'])
+        && request.resource.data.keys().hasAll(['nationalId', 'uid', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && get(profilePath(request.resource.data.nationalId)).data.uid == request.auth.uid;
+      allow read: if false;
+      allow update: if false;
+      allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isSuper());
     }
 
     // عدّاد المحاضرات المنعقدة لكل مقرر: يزيد المشرف واحدًا عند فتح جلسة للمقرر
@@ -126,7 +161,7 @@ service cloud.firestore {
       allow list: if false;
 
       allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['nationalId', 'uid', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['nationalId', 'uid', 'createdAt', 'claim'])
         && request.resource.data.keys().hasAll(['nationalId', 'uid', 'createdAt'])
         && request.resource.data.nationalId is string
         && request.resource.data.nationalId.matches('[23][0-9]{13}')

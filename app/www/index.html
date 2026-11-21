@@ -53,6 +53,11 @@
         .scan-top { position:absolute; top:calc(env(safe-area-inset-top) + 14px); left:0; right:0; text-align:center; color:#fff; font-weight:700; padding:0 20px; text-shadow:0 1px 4px rgba(0,0,0,.7); }
         .scan-bottom { position:absolute; bottom:calc(env(safe-area-inset-bottom) + 20px); left:16px; right:16px; }
         #scan-msg { color:#fff; text-align:center; font-weight:700; min-height:26px; text-shadow:0 1px 4px rgba(0,0,0,.8); }
+        .zoom-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; direction:ltr; }
+        .zoom-row button { width:46px; min-height:46px; margin:0; padding:0; font-size:24px; border-radius:50%; flex:none; }
+        .zoom-row input[type=range] { flex:1; accent-color:#fff; height:30px; }
+        #zoom-val { color:#fff; font-weight:800; min-width:44px; text-align:center; text-shadow:0 1px 4px rgba(0,0,0,.8); }
+        #video { transform-origin:center center; }
         .scan-bottom button { background:rgba(255,255,255,.18); color:#fff; border:1.5px solid rgba(255,255,255,.5); }
             select { width:100%; min-height:54px; padding:10px 14px; font-size:17px; border-radius:14px; border:1.5px solid var(--border); background:var(--input); color:var(--text); font-family:inherit; }
         h3.lvl { text-align:right; font-size:15px; margin:18px 0 6px; color:var(--primary); }
@@ -154,6 +159,7 @@
             <div><span>الرقم القومي</span><span id="h-nid"></span></div>
         </div>
         <button class="btn-ghost" id="h-courses">📊 حضوري في المواد</button>
+        <a class="hidden" id="upd" target="_blank" rel="noopener" href="https://github.com/gamalzakareya6-star/attendance/releases/latest/download/attendance.apk" style="display:block;background:var(--warning-soft);color:var(--warning);font-weight:800;border-radius:14px;padding:12px;margin:12px 0;text-decoration:none;text-align:center">⬆️ يتوفر تحديث جديد للتطبيق — اضغط للتحميل ثم ثبّته فوق القديم</a>
         <button class="btn-big" id="scan-btn">📷 مسح QR وتسجيل الحضور</button>
         <p class="muted" style="margin-top:16px;">لتعديل بياناتك أو تغيير الهاتف تواصل مع المشرف.</p>
     </div>
@@ -165,6 +171,7 @@
     <div class="frame"></div>
     <div class="scan-top">وجّه الكاميرا نحو الـ QR الظاهر على الشاشة</div>
     <div class="scan-bottom">
+        <div class="zoom-row"><button id="zoom-out" type="button">−</button><input type="range" id="zoom" min="1" max="4" step="0.1" value="1"><button id="zoom-in" type="button">+</button><span id="zoom-val">1×</span></div>
         <div id="scan-msg"></div>
         <button id="scan-cancel">إلغاء</button>
     </div>
@@ -204,7 +211,7 @@
     var PROFILE_KEY = "att_profile_v2";
 
     var $ = function (id) { return document.getElementById(id); };
-    var state = { deviceId: null, profile: null, stream: null, scanTimer: null, scanning: false, last: null };
+    var state = { deviceId: null, profile: null, stream: null, scanTimer: null, scanning: false, last: null, zoom: 1, hwZoom: false, zoomMin: 1, zoomMax: 4 };
 
     // ---------- أدوات ----------
     function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -361,11 +368,60 @@
     function cacheProfile(p) { state.profile = p; lsSet(PROFILE_KEY, JSON.stringify(p)); }
 
     // ---------- الإقلاع ----------
+    // ---------- ربط البيانات القادمة من المتصفح (mnuattendance://link?code=..&nid=..) ----------
+    var pendingLink = null;
+    function parseLink(url) {
+        try {
+            var u = new URL(String(url));
+            if (u.protocol !== "mnuattendance:") return null;
+            var code = u.searchParams.get("code"), nid = u.searchParams.get("nid");
+            if (/^[a-f0-9]{32}$/.test(code || "") && /^[23]\d{13}$/.test(nid || "")) return { code: code, nid: nid };
+        } catch (e) {}
+        return null;
+    }
+    function claimLink(l) {
+        show("boot"); $("boot-text").textContent = "جاري ربط بياناتك بالتطبيق...";
+        commit(function (a) {
+            return [
+                { update: { name: ROOT + "/profiles/" + l.nid, fields: { uid: str(a.uid), deviceId: str(state.deviceId) } },
+                  updateMask: { fieldPaths: ["uid", "deviceId"] }, currentDocument: { exists: true } },
+                { update: { name: ROOT + "/devices/" + state.deviceId, fields: { nationalId: str(l.nid), uid: str(a.uid), claim: str(l.code) } },
+                  updateTransforms: [{ fieldPath: "createdAt", setToServerValue: "REQUEST_TIME" }], currentDocument: { exists: false } }
+            ];
+        }).then(function (r) {
+            if (r.ok) return restoreFromServer();
+            blocked("تعذّر ربط البيانات", "انتهت صلاحية الرابط (30 دقيقة) أو استُخدم من قبل. افتح الموقع على المتصفح واضغط زر الربط من جديد.", true);
+        }).catch(function () { networkProblem(); });
+    }
+    function handleLink(url) {
+        var l = parseLink(url); if (!l) return;
+        if (state.profile) { window.alert("هذا التطبيق مسجّل بالفعل ببيانات طالب. لا يمكن ربط بيانات أخرى."); return; }
+        if (state.deviceId) claimLink(l); else pendingLink = l;
+    }
+    function setupLinks() {
+        var A = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+        if (!A) return Promise.resolve();
+        try { A.addListener("appUrlOpen", function (e) { handleLink(e && e.url); }); } catch (e) {}
+        return A.getLaunchUrl().then(function (r) { if (r && r.url) pendingLink = parseLink(r.url); }).catch(function () {});
+    }
+
+    // ---------- التنبيه بوجود تحديث ----------
+    function checkUpdate() {
+        timeoutFetch("version.json", { cache: "no-store" }, 6000).then(function (r) { return r.ok ? r.json() : null; }).then(function (v) {
+            if (!v || !v.build) return;
+            return timeoutFetch("https://api.github.com/repos/gamalzakareya6-star/attendance/releases/latest", {}, 8000)
+                .then(function (r) { return r.ok ? r.json() : null; }).then(function (rel) {
+                    var n = rel && parseInt(String(rel.tag_name || "").replace(/\D/g, ""), 10);
+                    if (n && n > v.build) $("upd").classList.remove("hidden");
+                });
+        }).catch(function () {});
+    }
+
     function boot() {
         show("boot");
         $("boot-text").textContent = "جاري التحقق من الجهاز...";
 
-        getDeviceId().then(function (id) {
+        setupLinks().then(getDeviceId).then(function (id) {
             state.deviceId = id;
             return start();
         }).catch(function (e) {
@@ -400,7 +456,10 @@
     // يحاول استرجاع بيانات الجهاز المسجّل مسبقًا (مثلًا بعد مسح بيانات التطبيق مع بقاء الهوية)
     function restoreFromServer() {
         return docGet("/devices/" + encodeURIComponent(state.deviceId)).then(function (r) {
-            if (r.status === 404) { show("register"); return; }
+            if (r.status === 404) {
+                if (pendingLink) { var pl = pendingLink; pendingLink = null; return claimLink(pl); }
+                show("register"); return;
+            }
             if (r.status === 403) {
                 blocked("هذا الجهاز مسجّل مسبقًا", "سُجّلت عليه بيانات من قبل. تواصل مع المشرف لإعادة التعيين.", false);
                 return;
@@ -515,6 +574,43 @@
         return null;
     }
 
+    // ---------- التكبير (للتصوير من مكان بعيد) ----------
+    function setZoom(z) {
+        z = Math.max(state.zoomMin, Math.min(state.zoomMax, z));
+        state.zoom = z;
+        $("zoom").value = z; $("zoom-val").textContent = (Math.round(z * 10) / 10) + "×";
+        var v = $("video");
+        if (state.hwZoom && state.stream) {
+            var tr = state.stream.getVideoTracks()[0];
+            try { tr.applyConstraints({ advanced: [{ zoom: z }] }).catch(function () {}); } catch (e) {}
+            v.style.transform = "";
+        } else {
+            v.style.transform = "scale(" + z + ")";   // تكبير رقمي: المسح يقصّ المنتصف نفسه
+        }
+    }
+    function initZoom(stream) {
+        state.hwZoom = false; state.zoomMin = 1; state.zoomMax = 4; state.zoom = 1;
+        try {
+            var tr = stream.getVideoTracks()[0];
+            var caps = tr.getCapabilities ? tr.getCapabilities() : null;
+            if (caps && caps.zoom && caps.zoom.max > caps.zoom.min) {
+                state.hwZoom = true; state.zoomMin = caps.zoom.min; state.zoomMax = Math.min(caps.zoom.max, 8);
+            }
+        } catch (e) {}
+        var r = $("zoom"); r.min = state.zoomMin; r.max = state.zoomMax; r.step = (state.zoomMax - state.zoomMin) / 40;
+        setZoom(state.zoomMin);
+    }
+    $("zoom").addEventListener("input", function () { setZoom(parseFloat(this.value)); });
+    $("zoom-in").addEventListener("click", function () { setZoom(state.zoom + (state.zoomMax - state.zoomMin) / 10); });
+    $("zoom-out").addEventListener("click", function () { setZoom(state.zoom - (state.zoomMax - state.zoomMin) / 10); });
+    (function () {   // قرص الإصبعين للتكبير
+        var d0 = 0, z0 = 1, el = $("s-scan");
+        function dist(e) { var a = e.touches[0], b = e.touches[1]; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+        el.addEventListener("touchstart", function (e) { if (e.touches.length === 2) { d0 = dist(e); z0 = state.zoom; } }, { passive: true });
+        el.addEventListener("touchmove", function (e) { if (e.touches.length === 2 && d0) setZoom(z0 * dist(e) / d0); }, { passive: true });
+        el.addEventListener("touchend", function () { d0 = 0; }, { passive: true });
+    })();
+
     function startScan() {
         $("scan-msg").textContent = "";
         show("scan");
@@ -522,11 +618,12 @@
             showResult("bad", "الكاميرا غير متاحة", "تعذّر تشغيل الكاميرا على هذا الجهاز.", false);
             return;
         }
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false })
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
             .then(function (stream) {
                 state.stream = stream;
                 var v = $("video");
                 v.srcObject = stream;
+                initZoom(stream);
                 return v.play();
             }).then(function () {
                 state.scanning = true;
@@ -565,7 +662,15 @@
 
         function next() { if (state.scanning) state.scanTimer = setTimeout(scanLoop, 110); }
 
-        if (detector) {
+        // مع التكبير الرقمي نقصّ منتصف الصورة ونمسحه؛ بدونه نمسح الفيديو مباشرة
+        var digital = !state.hwZoom && state.zoom > 1.01;
+        var vw = v.videoWidth, vh = v.videoHeight;
+        var sw = digital ? vw / state.zoom : vw, sh = digital ? vh / state.zoom : vh;
+        var sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+        var scale = Math.min(1, (digital ? 960 : 640) / Math.max(sw, sh));
+        var w = Math.max(1, Math.round(sw * scale)), h = Math.max(1, Math.round(sh * scale));
+
+        if (detector && !digital) {
             detector.detect(v).then(function (codes) {
                 if (codes && codes.length && onCode(codes[0].rawValue)) return;
                 next();
@@ -573,10 +678,15 @@
             return;
         }
 
-        var scale = Math.min(1, 640 / Math.max(v.videoWidth, v.videoHeight));
-        var w = Math.max(1, Math.round(v.videoWidth * scale)), h = Math.max(1, Math.round(v.videoHeight * scale));
         canvas.width = w; canvas.height = h;
-        ctx.drawImage(v, 0, 0, w, h);
+        ctx.drawImage(v, sx, sy, sw, sh, 0, 0, w, h);
+        if (detector) {
+            detector.detect(canvas).then(function (codes) {
+                if (codes && codes.length && onCode(codes[0].rawValue)) return;
+                next();
+            }).catch(function () { detector = null; next(); });
+            return;
+        }
         var img = ctx.getImageData(0, 0, w, h);
         var res = (typeof jsQR === "function") ? jsQR(img.data, w, h, { inversionAttempts: "dontInvert" }) : null;
         if (res && res.data && onCode(res.data)) return;
@@ -772,6 +882,7 @@
 
     // ---------- الأزرار ----------
     $("scan-btn").addEventListener("click", startScan);
+    checkUpdate();
     $("scan-cancel").addEventListener("click", function () { stopCamera(); showHome(); });
     $("res-again").addEventListener("click", startScan);
     $("res-home").addEventListener("click", function () { stopCamera(); showHome(); });

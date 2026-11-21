@@ -143,6 +143,7 @@
             <div><span>الهاتف</span><span id="h-phone"></span></div>
             <div><span>الرقم القومي</span><span id="h-nid"></span></div>
         </div>
+        <button class="btn-ghost hidden" id="h-link">📲 ربط بياناتي بتطبيق الأندرويد</button>
         <button class="btn-ghost" id="h-courses">📊 حضوري في المواد</button>
         <div class="hint">📷 لتسجيل الحضور: امسح الـ QR الظاهر على الشاشة بكاميرا هاتفك العادية، وسيُسجَّل حضورك تلقائيًا.</div>
         <p class="muted" style="margin-top:16px;">استخدم دائمًا نفس المتصفح (Safari على الآيفون). لتعديل بياناتك أو تغيير الهاتف تواصل مع المشرف.</p>
@@ -307,6 +308,28 @@
     function clearQR() { state.q = null; try { history.replaceState(null, "", location.pathname); } catch (e) {} }
 
     // ---------- العرض ----------
+    // ---------- ربط البيانات بالتطبيق (أندرويد فقط) ----------
+    var APK_URL = "https://github.com/gamalzakareya6-star/attendance/releases/latest/download/attendance.apk";
+    function randHex(n) { var a = new Uint8Array(n / 2); crypto.getRandomValues(a); return Array.prototype.map.call(a, function (x) { return ("0" + x.toString(16)).slice(-2); }).join(""); }
+    function linkToApp() {
+        if (!window.confirm("سيُنقل تسجيلك إلى التطبيق على هذا الهاتف. بعد النقل لن يعمل التسجيل من هذا المتصفح. هل تريد المتابعة؟\n(يجب أن يكون التطبيق مثبّتًا)")) return;
+        var btn = $("h-link"); btn.disabled = true;
+        var code = randHex(32), nid = state.profile.nationalId;
+        commit(function (a) {
+            return [{
+                update: { name: ROOT + "/transfers/" + code, fields: { nationalId: str(nid), uid: str(a.uid) } },
+                updateTransforms: [{ fieldPath: "createdAt", setToServerValue: "REQUEST_TIME" }],
+                currentDocument: { exists: false }
+            }];
+        }).then(function (r) {
+            btn.disabled = false;
+            if (!r.ok) { window.alert("تعذّر تجهيز الربط. تأكد من الإنترنت وحاول مرة أخرى."); return; }
+            window.location.href = "intent://link?code=" + code + "&nid=" + nid + "#Intent;scheme=mnuattendance;package=eg.edu.mnu.attendance;S.browser_fallback_url=" + encodeURIComponent(APK_URL) + ";end";
+        }).catch(function () { btn.disabled = false; window.alert("تعذّر الاتصال."); });
+    }
+    $("h-link").addEventListener("click", linkToApp);
+    if (/Android/i.test(navigator.userAgent)) $("h-link").classList.remove("hidden");
+
     function showHome() {
         var p = state.profile;
         $("h-name").textContent = p.name;

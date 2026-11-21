@@ -38,6 +38,7 @@ jobs:
         run: |
           cp node_modules/jsqr/dist/jsQR.js www/jsQR.js
           cp ../catalog.json www/catalog.json
+          echo '{"build": ${{ github.run_number }}}' > www/version.json
 
       - name: Create Android project
         run: npx cap add android
@@ -54,6 +55,8 @@ jobs:
           M=android/app/src/main/AndroidManifest.xml
           sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application#' "$M"
           sed -i 's#android:allowBackup="true"#android:allowBackup="false"#' "$M"
+          # رابط mnuattendance:// لفتح التطبيق وربط بيانات المتصفح
+          sed -i '0,/<\/activity>/s#</activity>#<intent-filter>\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="mnuattendance" android:host="link" />\n            </intent-filter>\n        </activity>#' "$M"
           grep -n "CAMERA\|allowBackup\|versionCode" "$M" android/app/build.gradle
 
       - name: Sync web files
