@@ -211,7 +211,7 @@
     var PROFILE_KEY = "att_profile_v2";
 
     var $ = function (id) { return document.getElementById(id); };
-    var state = { deviceId: null, profile: null, stream: null, scanTimer: null, scanning: false, last: null, zoom: 1, hwZoom: false, zoomMin: 1, zoomMax: 4 };
+    var state = { deviceId: null, profile: null, stream: null, scanTimer: null, scanning: false, last: null, zoom: 1, hwMax: 1, hwApplied: 1, zoomMin: 1, zoomMax: 10 };
 
     // ---------- أدوات ----------
     function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -576,33 +576,32 @@
 
     // ---------- التكبير (للتصوير من مكان بعيد) ----------
     function setZoom(z) {
-        z = Math.max(state.zoomMin, Math.min(state.zoomMax, z));
+        z = Math.max(1, Math.min(state.zoomMax, z));
         state.zoom = z;
         $("zoom").value = z; $("zoom-val").textContent = (Math.round(z * 10) / 10) + "×";
-        var v = $("video");
-        if (state.hwZoom && state.stream) {
+        // تكبير الكاميرا الفعلي حتى حدّه، والباقي رقميًا (للوصول إلى 10×)
+        var hw = Math.max(1, Math.min(z, state.hwMax));
+        state.hwApplied = hw;
+        if (state.hwMax > 1 && state.stream) {
             var tr = state.stream.getVideoTracks()[0];
-            try { tr.applyConstraints({ advanced: [{ zoom: z }] }).catch(function () {}); } catch (e) {}
-            v.style.transform = "";
-        } else {
-            v.style.transform = "scale(" + z + ")";   // تكبير رقمي: المسح يقصّ المنتصف نفسه
+            try { tr.applyConstraints({ advanced: [{ zoom: hw }] }).catch(function () {}); } catch (e) {}
         }
+        var resid = z / hw;
+        $("video").style.transform = resid > 1.01 ? "scale(" + resid + ")" : "";
     }
     function initZoom(stream) {
-        state.hwZoom = false; state.zoomMin = 1; state.zoomMax = 4; state.zoom = 1;
+        state.hwMax = 1; state.zoomMax = 10; state.zoom = 1; state.hwApplied = 1;
         try {
             var tr = stream.getVideoTracks()[0];
             var caps = tr.getCapabilities ? tr.getCapabilities() : null;
-            if (caps && caps.zoom && caps.zoom.max > caps.zoom.min) {
-                state.hwZoom = true; state.zoomMin = caps.zoom.min; state.zoomMax = Math.min(caps.zoom.max, 8);
-            }
+            if (caps && caps.zoom && caps.zoom.max > 1) state.hwMax = caps.zoom.max;
         } catch (e) {}
-        var r = $("zoom"); r.min = state.zoomMin; r.max = state.zoomMax; r.step = (state.zoomMax - state.zoomMin) / 40;
-        setZoom(state.zoomMin);
+        var r = $("zoom"); r.min = 1; r.max = 10; r.step = 0.1;
+        setZoom(1);
     }
     $("zoom").addEventListener("input", function () { setZoom(parseFloat(this.value)); });
-    $("zoom-in").addEventListener("click", function () { setZoom(state.zoom + (state.zoomMax - state.zoomMin) / 10); });
-    $("zoom-out").addEventListener("click", function () { setZoom(state.zoom - (state.zoomMax - state.zoomMin) / 10); });
+    $("zoom-in").addEventListener("click", function () { setZoom(state.zoom + 0.5); });
+    $("zoom-out").addEventListener("click", function () { setZoom(state.zoom - 0.5); });
     (function () {   // قرص الإصبعين للتكبير
         var d0 = 0, z0 = 1, el = $("s-scan");
         function dist(e) { var a = e.touches[0], b = e.touches[1]; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
@@ -663,9 +662,9 @@
         function next() { if (state.scanning) state.scanTimer = setTimeout(scanLoop, 110); }
 
         // مع التكبير الرقمي نقصّ منتصف الصورة ونمسحه؛ بدونه نمسح الفيديو مباشرة
-        var digital = !state.hwZoom && state.zoom > 1.01;
+        var resid = state.zoom / (state.hwApplied || 1), digital = resid > 1.01;
         var vw = v.videoWidth, vh = v.videoHeight;
-        var sw = digital ? vw / state.zoom : vw, sh = digital ? vh / state.zoom : vh;
+        var sw = digital ? vw / resid : vw, sh = digital ? vh / resid : vh;
         var sx = (vw - sw) / 2, sy = (vh - sh) / 2;
         var scale = Math.min(1, (digital ? 960 : 640) / Math.max(sw, sh));
         var w = Math.max(1, Math.round(sw * scale)), h = Math.max(1, Math.round(sh * scale));
