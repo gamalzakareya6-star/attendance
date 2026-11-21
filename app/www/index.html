@@ -160,6 +160,7 @@
         </div>
         <button class="btn-ghost" id="h-courses">📊 حضوري في المواد</button>
         <a class="hidden" id="upd" target="_blank" rel="noopener" href="https://github.com/gamalzakareya6-star/attendance/releases/latest/download/attendance.apk" style="display:block;background:var(--warning-soft);color:var(--warning);font-weight:800;border-radius:14px;padding:12px;margin:12px 0;text-decoration:none;text-align:center">⬆️ يتوفر تحديث جديد للتطبيق — اضغط للتحميل ثم ثبّته فوق القديم</a>
+        <button class="btn-ghost" id="h-web" type="button">🌐 ربط المتصفح بنفس بياناتي</button>
         <button class="btn-big" id="scan-btn">📷 مسح QR وتسجيل الحضور</button>
         <p class="muted" style="margin-top:16px;">لتعديل بياناتك أو تغيير الهاتف تواصل مع المشرف.</p>
     </div>
@@ -383,14 +384,14 @@
         show("boot"); $("boot-text").textContent = "جاري ربط بياناتك بالتطبيق...";
         commit(function (a) {
             return [
-                { update: { name: ROOT + "/profiles/" + l.nid, fields: { uid: str(a.uid), deviceId: str(state.deviceId) } },
-                  updateMask: { fieldPaths: ["uid", "deviceId"] }, currentDocument: { exists: true } },
+                { update: { name: ROOT + "/profiles/" + l.nid, fields: { uid2: str(a.uid), deviceId2: str(state.deviceId) } },
+                  updateMask: { fieldPaths: ["uid2", "deviceId2"] }, currentDocument: { exists: true } },
                 { update: { name: ROOT + "/devices/" + state.deviceId, fields: { nationalId: str(l.nid), uid: str(a.uid), claim: str(l.code) } },
                   updateTransforms: [{ fieldPath: "createdAt", setToServerValue: "REQUEST_TIME" }], currentDocument: { exists: false } }
             ];
         }).then(function (r) {
             if (r.ok) return restoreFromServer();
-            blocked("تعذّر ربط البيانات", "انتهت صلاحية الرابط (30 دقيقة) أو استُخدم من قبل. افتح الموقع على المتصفح واضغط زر الربط من جديد.", true);
+            blocked("تعذّر ربط البيانات", "انتهت صلاحية الرابط (30 دقيقة) أو استُخدم من قبل أو رُبط جهاز ثانٍ بالفعل. افتح الموقع على المتصفح واضغط زر الربط من جديد.", true);
         }).catch(function () { networkProblem(); });
     }
     function handleLink(url) {
@@ -471,7 +472,7 @@
                     if (!pr.ok) { networkProblem(); return; }
                     return pr.json().then(function (pd) {
                         var f = pd.fields;
-                        cacheProfile({ name: sv(f, "name"), phone: sv(f, "phone"), nationalId: sv(f, "nationalId"), deviceId: sv(f, "deviceId"), program: sv(f, "program") });
+                        cacheProfile({ name: sv(f, "name"), phone: sv(f, "phone"), nationalId: sv(f, "nationalId"), deviceId: state.deviceId, program: sv(f, "program") });
                         showHome();
                     });
                 });
@@ -609,6 +610,22 @@
         el.addEventListener("touchmove", function (e) { if (e.touches.length === 2 && d0) setZoom(z0 * dist(e) / d0); }, { passive: true });
         el.addEventListener("touchend", function () { d0 = 0; }, { passive: true });
     })();
+
+    // ربط المتصفح: ينشئ رمزًا مؤقتًا ثم يفتح الموقع ليأخذ المتصفح البيانات نفسها (يعمل التطبيق والمتصفح معًا)
+    var SITE = "https://gamalzakareya6-star.github.io/attendance/student.html";
+    function randHex(n) { var a = new Uint8Array(n / 2); crypto.getRandomValues(a); return Array.prototype.map.call(a, function (x) { return ("0" + x.toString(16)).slice(-2); }).join(""); }
+    $("h-web").addEventListener("click", function () {
+        var btn = $("h-web"), code = randHex(32), nid = state.profile.nationalId;
+        btn.disabled = true;
+        commit(function (a) {
+            return [{ update: { name: ROOT + "/transfers/" + code, fields: { nationalId: str(nid), uid: str(a.uid) } },
+                      updateTransforms: [{ fieldPath: "createdAt", setToServerValue: "REQUEST_TIME" }], currentDocument: { exists: false } }];
+        }).then(function (r) {
+            btn.disabled = false;
+            if (!r.ok) { window.alert("تعذّر تجهيز الربط. تأكد من الإنترنت وحاول مرة أخرى."); return; }
+            window.location.href = SITE + "?link=" + code + "&nid=" + nid;
+        }).catch(function () { btn.disabled = false; window.alert("تعذّر الاتصال."); });
+    });
 
     function startScan() {
         $("scan-msg").textContent = "";
@@ -835,8 +852,9 @@
             if (!pr.ok) { bad("تعذّر التحقق", "تأكد من الإنترنت وأعد المسح. (P0)"); return; }
             return pr.json().then(function (pd) {
                 var f = pd.fields, p = state.profile;
-                var diff = sv(f, "name") !== p.name || sv(f, "phone") !== p.phone || sv(f, "deviceId") !== state.deviceId;
-                if (sv(f, "deviceId") !== state.deviceId) { bad("بياناتك مرتبطة بجهاز آخر", "هذا الرقم القومي مسجّل على جهاز آخر. تواصل مع المشرف. (P2)"); return; }
+                var mine = sv(f, "deviceId") === state.deviceId || sv(f, "deviceId2") === state.deviceId;
+                var diff = sv(f, "name") !== p.name || sv(f, "phone") !== p.phone;
+                if (!mine) { bad("بياناتك مرتبطة بجهاز آخر", "هذا الرقم القومي مسجّل على جهاز آخر. تواصل مع المشرف. (P2)"); return; }
                 if (diff && !retried) { p.name = sv(f, "name"); p.phone = sv(f, "phone"); cacheProfile(p); return submitAttendance(q, true); }
                 if (!retried) return submitAttendance(q, true);     // ربما تغيّر الرمز أثناء المسح
                 bad("الرمز لم يعد صالحًا", "الرمز يتغيّر باستمرار. امسح الرمز الظاهر الآن على الشاشة. إن تكرر الخطأ أرسل للمشرف الرمز: (T)");

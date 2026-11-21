@@ -331,6 +331,29 @@
         } catch (e) {}
         return null;
     }
+    function readLink() {
+        try {
+            var p = new URLSearchParams(location.search), c = p.get("link"), n = p.get("nid");
+            if (/^[a-f0-9]{32}$/.test(c || "") && /^[23]\d{13}$/.test(n || "")) return { code: c, nid: n };
+        } catch (e) {}
+        return null;
+    }
+    function claimLink(l) {
+        $("boot-text").textContent = "جاري ربط المتصفح بنفس بياناتك...";
+        show("boot");
+        commit(function (a) {
+            return [
+                { update: { name: ROOT + "/profiles/" + l.nid, fields: { uid2: str(a.uid), deviceId2: str(state.deviceId) } },
+                  updateMask: { fieldPaths: ["uid2", "deviceId2"] }, currentDocument: { exists: true } },
+                { update: { name: ROOT + "/devices/" + state.deviceId, fields: { nationalId: str(l.nid), uid: str(a.uid), claim: str(l.code) } },
+                  updateTransforms: [{ fieldPath: "createdAt", setToServerValue: "REQUEST_TIME" }], currentDocument: { exists: false } }
+            ];
+        }).then(function (r) {
+            try { history.replaceState(null, "", location.pathname); } catch (e) {}
+            if (r.ok) return restoreFromServer();
+            blocked("تعذّر ربط المتصفح", "انتهت صلاحية رابط الربط (30 دقيقة) أو استُخدم من قبل أو رُبط متصفح ثانٍ بالفعل. افتح التطبيق واضغط «ربط المتصفح» من جديد.", false);
+        }).catch(networkProblem);
+    }
     function clearQR() { state.q = null; try { history.replaceState(null, "", location.pathname); } catch (e) {} }
 
     // ---------- العرض ----------
@@ -338,7 +361,7 @@
     var APK_URL = "https://github.com/gamalzakareya6-star/attendance/releases/latest/download/attendance.apk";
     function randHex(n) { var a = new Uint8Array(n / 2); crypto.getRandomValues(a); return Array.prototype.map.call(a, function (x) { return ("0" + x.toString(16)).slice(-2); }).join(""); }
     function linkToApp() {
-        if (!window.confirm("سيُنقل تسجيلك إلى التطبيق على هذا الهاتف. بعد النقل لن يعمل التسجيل من هذا المتصفح. هل تريد المتابعة؟\n(يجب أن يكون التطبيق مثبّتًا)")) return;
+        if (!window.confirm("سيُربط التطبيق بنفس بياناتك على هذا الهاتف، ويبقى التسجيل يعمل من المتصفح والتطبيق معًا. هل تريد المتابعة؟\n(يجب أن يكون التطبيق مثبّتًا)")) return;
         var btn = $("h-link"); btn.disabled = true;
         var code = randHex(32), nid = state.profile.nationalId;
         commit(function (a) {
@@ -395,7 +418,11 @@
 
     function restoreFromServer() {
         return docGet("/devices/" + encodeURIComponent(state.deviceId)).then(function (r) {
-            if (r.status === 404) { show("register"); return; }
+            if (r.status === 404) {
+                var lk = readLink();
+                if (lk) return claimLink(lk);
+                show("register"); return;
+            }
             if (r.status === 403) { blocked("هذا المتصفح مسجّل مسبقًا", "سُجّلت عليه بيانات من قبل. تواصل مع المشرف لإعادة التعيين.", false); return; }
             if (!r.ok) { networkProblem(); return; }
             return r.json().then(function (d) {
@@ -403,7 +430,7 @@
                     if (!pr.ok) { networkProblem(); return; }
                     return pr.json().then(function (pd) {
                         var f = pd.fields;
-                        cacheProfile({ name: sv(f, "name"), phone: sv(f, "phone"), nationalId: sv(f, "nationalId"), deviceId: sv(f, "deviceId"), program: sv(f, "program") });
+                        cacheProfile({ name: sv(f, "name"), phone: sv(f, "phone"), nationalId: sv(f, "nationalId"), deviceId: state.deviceId, program: sv(f, "program") });
                         afterProfile();
                     });
                 });
@@ -785,8 +812,9 @@
             if (!pr.ok) { bad("تعذّر التحقق", "تأكد من الإنترنت وأعد المسح. (P0)"); return; }
             return pr.json().then(function (pd) {
                 var f = pd.fields, p = state.profile;
-                var diff = sv(f, "name") !== p.name || sv(f, "phone") !== p.phone || sv(f, "deviceId") !== state.deviceId;
-                if (sv(f, "deviceId") !== state.deviceId) { bad("بياناتك مرتبطة بجهاز آخر", "هذا الرقم القومي مسجّل على جهاز آخر. تواصل مع المشرف. (P2)"); return; }
+                var mine = sv(f, "deviceId") === state.deviceId || sv(f, "deviceId2") === state.deviceId;
+                var diff = sv(f, "name") !== p.name || sv(f, "phone") !== p.phone;
+                if (!mine) { bad("بياناتك مرتبطة بجهاز آخر", "هذا الرقم القومي مسجّل على جهاز آخر. تواصل مع المشرف. (P2)"); return; }
                 if (diff && !retried) { p.name = sv(f, "name"); p.phone = sv(f, "phone"); cacheProfile(p); return submitAttendance(q, true); }
                 if (!retried) return submitAttendance(q, true);     // ربما تغيّر الرمز أثناء المسح
                 bad("الرمز لم يعد صالحًا", "الرمز يتغيّر باستمرار. امسح الرمز الظاهر الآن على الشاشة. إن تكرر الخطأ أرسل للمشرف الرمز: (T)");

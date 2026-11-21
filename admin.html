@@ -1052,6 +1052,7 @@
             const b = writeBatch(db);
             b.delete(doc(db, "profiles", s.id));
             if (s.deviceId) b.delete(doc(db, "devices", s.deviceId));
+            if (s.deviceId2) b.delete(doc(db, "devices", s.deviceId2));
             await b.commit();
             studentsAll = studentsAll.filter(x => x.id !== s.id);
             renderStudents();
