@@ -59,12 +59,23 @@ jobs:
           sed -i '0,/<\/activity>/s#</activity>#<intent-filter>\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="mnuattendance" android:host="link" />\n            </intent-filter>\n        </activity>#' "$M"
           grep -n "CAMERA\|allowBackup\|versionCode" "$M" android/app/build.gradle
 
+      - name: Force the fixed signing key in Gradle
+        run: |
+          sed -i '0,/^android {/s##android {\n    signingConfigs {\n        debug {\n            storeFile file("$rootDir/../debug.keystore")\n            storePassword "android"\n            keyAlias "androiddebugkey"\n            keyPassword "android"\n        }\n    }#' android/app/build.gradle
+          grep -n -A8 "signingConfigs" android/app/build.gradle
+
       - name: Sync web files
         run: npx cap sync android
 
       - name: Build APK
         working-directory: app/android
         run: ./gradlew assembleDebug --no-daemon
+
+      - name: Verify the APK is signed with the fixed key
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          keytool -printcert -jarfile "$APK" | grep SHA256
+          keytool -printcert -jarfile "$APK" | grep -q "6C:2F:E7:0A:7C:A9:49:7A:C9:10:06:8F:B9:77:32:8E:C0:DE:B2:77:01:2C:B9:8B:99:5F:62:02:89:5F:A6:5A" || { echo "WRONG SIGNING KEY"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -106,12 +117,23 @@ jobs:
       - name: Rising version number
         run: sed -i "s/versionCode 1/versionCode $((${{ github.run_number }} + 100))/" android/app/build.gradle
 
+      - name: Force the fixed signing key in Gradle
+        run: |
+          sed -i '0,/^android {/s##android {\n    signingConfigs {\n        debug {\n            storeFile file("$rootDir/../../app/debug.keystore")\n            storePassword "android"\n            keyAlias "androiddebugkey"\n            keyPassword "android"\n        }\n    }#' android/app/build.gradle
+          grep -n -A8 "signingConfigs" android/app/build.gradle
+
       - name: Sync web files
         run: npx cap sync android
 
       - name: Build APK
         working-directory: admin-app/android
         run: ./gradlew assembleDebug --no-daemon
+
+      - name: Verify the APK is signed with the fixed key
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          keytool -printcert -jarfile "$APK" | grep SHA256
+          keytool -printcert -jarfile "$APK" | grep -q "6C:2F:E7:0A:7C:A9:49:7A:C9:10:06:8F:B9:77:32:8E:C0:DE:B2:77:01:2C:B9:8B:99:5F:62:02:89:5F:A6:5A" || { echo "WRONG SIGNING KEY"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:
