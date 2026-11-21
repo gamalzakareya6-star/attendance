@@ -88,6 +88,19 @@
         .spinner { border-top-color:var(--primary-2); }
         ::selection { background:color-mix(in srgb, var(--primary) 30%, transparent); }
         @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
+        /* شاشة المسح */
+        #s-scan { padding:0; background:#000; justify-content:flex-start; position:relative; overflow:hidden; }
+        #video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+        .frame { position:absolute; top:50%; left:50%; width:min(70vw,300px); height:min(70vw,300px); transform:translate(-50%,-55%); border:4px solid #fff; border-radius:24px; box-shadow:0 0 0 100vmax rgba(0,0,0,.55); }
+        .scan-top { position:absolute; top:calc(env(safe-area-inset-top) + 14px); left:0; right:0; text-align:center; color:#fff; font-weight:700; padding:0 20px; text-shadow:0 1px 4px rgba(0,0,0,.7); }
+        .scan-bottom { position:absolute; bottom:calc(env(safe-area-inset-bottom) + 20px); left:16px; right:16px; }
+        #scan-msg { color:#fff; text-align:center; font-weight:700; min-height:26px; text-shadow:0 1px 4px rgba(0,0,0,.8); }
+        .zoom-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; direction:ltr; }
+        .zoom-row button { width:46px; min-height:46px; margin:0; padding:0; font-size:24px; border-radius:50%; flex:none; }
+        .zoom-row input[type=range] { flex:1; accent-color:#fff; height:30px; }
+        #zoom-val { color:#fff; font-weight:800; min-width:44px; text-align:center; text-shadow:0 1px 4px rgba(0,0,0,.8); }
+        #video { transform-origin:center center; }
+        .scan-bottom button { background:rgba(255,255,255,.18); color:#fff; border:1.5px solid rgba(255,255,255,.5); }
     </style>
 </head>
 <body>
@@ -143,11 +156,24 @@
             <div><span>الهاتف</span><span id="h-phone"></span></div>
             <div><span>الرقم القومي</span><span id="h-nid"></span></div>
         </div>
+        <button class="btn-big" id="scan-btn">📷 مسح QR وتسجيل الحضور</button>
         <button class="btn-ghost hidden" id="h-link">📲 ربط بياناتي بتطبيق الأندرويد</button>
         <button class="btn-ghost" id="h-courses">📊 حضوري في المواد</button>
         <div class="hint">📷 لتسجيل الحضور: امسح الـ QR الظاهر على الشاشة بكاميرا هاتفك العادية، وسيُسجَّل حضورك تلقائيًا.</div>
         <p class="muted" style="margin-top:16px;">استخدم دائمًا نفس المتصفح (Safari على الآيفون). لتعديل بياناتك أو تغيير الهاتف تواصل مع المشرف.</p>
         <p class="muted">مستخدمو أندرويد: <a href="https://github.com/gamalzakareya6-star/attendance/releases/latest/download/attendance.apk">حمّل التطبيق</a></p>
+    </div>
+</div>
+
+<!-- المسح -->
+<div class="screen hidden" id="s-scan">
+    <video id="video" playsinline muted autoplay></video>
+    <div class="frame"></div>
+    <div class="scan-top">وجّه الكاميرا نحو الـ QR الظاهر على الشاشة</div>
+    <div class="scan-bottom">
+        <div class="zoom-row"><button id="zoom-out" type="button">−</button><input type="range" id="zoom" min="1" max="10" step="0.1" value="1"><button id="zoom-in" type="button">+</button><span id="zoom-val">1×</span></div>
+        <div id="scan-msg"></div>
+        <button id="scan-cancel">إلغاء</button>
     </div>
 </div>
 
@@ -183,13 +209,13 @@
     var DEV_KEY = "att_dev_v2";
 
     var $ = function (id) { return document.getElementById(id); };
-    var state = { deviceId: null, profile: null, q: null };
+    var state = { deviceId: null, profile: null, q: null, stream: null, scanning: false, scanTimer: null, zoom: 1, hwMax: 1, hwApplied: 1, zoomMax: 10 };
 
     function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
     function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
     function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
 
-    var SCREENS = ["boot", "blocked", "register", "home", "courses", "result"];
+    var SCREENS = ["boot", "blocked", "register", "home", "courses", "scan", "result"];
     function show(name) { SCREENS.forEach(function (n) { $("s-" + n).classList.toggle("hidden", n !== name); }); }
 
     function blocked(title, text, canRetry) {
@@ -570,6 +596,188 @@
     $("h-courses").addEventListener("click", openCourses);
     $("c-back").addEventListener("click", showHome);
 
+    // ---------- التكبير (للتصوير من مكان بعيد) ----------
+    function setZoom(z) {
+        z = Math.max(1, Math.min(state.zoomMax, z));
+        state.zoom = z;
+        $("zoom").value = z; $("zoom-val").textContent = (Math.round(z * 10) / 10) + "×";
+        // تكبير الكاميرا الفعلي حتى حدّه، والباقي رقميًا (للوصول إلى 10×)
+        var hw = Math.max(1, Math.min(z, state.hwMax));
+        state.hwApplied = hw;
+        if (state.hwMax > 1 && state.stream) {
+            var tr = state.stream.getVideoTracks()[0];
+            try { tr.applyConstraints({ advanced: [{ zoom: hw }] }).catch(function () {}); } catch (e) {}
+        }
+        var resid = z / hw;
+        $("video").style.transform = resid > 1.01 ? "scale(" + resid + ")" : "";
+    }
+    function initZoom(stream) {
+        state.hwMax = 1; state.zoomMax = 10; state.zoom = 1; state.hwApplied = 1;
+        try {
+            var tr = stream.getVideoTracks()[0];
+            var caps = tr.getCapabilities ? tr.getCapabilities() : null;
+            if (caps && caps.zoom && caps.zoom.max > 1) state.hwMax = caps.zoom.max;
+        } catch (e) {}
+        var r = $("zoom"); r.min = 1; r.max = 10; r.step = 0.1;
+        setZoom(1);
+    }
+    $("zoom").addEventListener("input", function () { setZoom(parseFloat(this.value)); });
+    $("zoom-in").addEventListener("click", function () { setZoom(state.zoom + 0.5); });
+    $("zoom-out").addEventListener("click", function () { setZoom(state.zoom - 0.5); });
+    (function () {   // قرص الإصبعين للتكبير
+        var d0 = 0, z0 = 1, el = $("s-scan");
+        function dist(e) { var a = e.touches[0], b = e.touches[1]; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+        el.addEventListener("touchstart", function (e) { if (e.touches.length === 2) { d0 = dist(e); z0 = state.zoom; } }, { passive: true });
+        el.addEventListener("touchmove", function (e) { if (e.touches.length === 2 && d0) setZoom(z0 * dist(e) / d0); }, { passive: true });
+        el.addEventListener("touchend", function () { d0 = 0; }, { passive: true });
+    })();
+
+    // ---------- المسح ----------
+    function stopCamera() {
+        state.scanning = false;
+        if (state.scanTimer) { clearTimeout(state.scanTimer); state.scanTimer = null; }
+        if (state.stream) { state.stream.getTracks().forEach(function (t) { t.stop(); }); state.stream = null; }
+        var v = $("video"); try { v.srcObject = null; } catch (e) {}
+    }
+
+    function parseQR(text) {
+        try {
+            var u = new URL(String(text).trim());
+            var s = u.searchParams.get("session"), t = u.searchParams.get("token");
+            if (s && t && /^[A-Za-z0-9]{10,40}$/.test(s) && /^[A-Za-z0-9]{6,30}$/.test(t)) return { session: s, token: t };
+        } catch (e) {}
+        return null;
+    }
+
+    // ---------- التكبير (للتصوير من مكان بعيد) ----------
+    function setZoom(z) {
+        z = Math.max(1, Math.min(state.zoomMax, z));
+        state.zoom = z;
+        $("zoom").value = z; $("zoom-val").textContent = (Math.round(z * 10) / 10) + "×";
+        // تكبير الكاميرا الفعلي حتى حدّه، والباقي رقميًا (للوصول إلى 10×)
+        var hw = Math.max(1, Math.min(z, state.hwMax));
+        state.hwApplied = hw;
+        if (state.hwMax > 1 && state.stream) {
+            var tr = state.stream.getVideoTracks()[0];
+            try { tr.applyConstraints({ advanced: [{ zoom: hw }] }).catch(function () {}); } catch (e) {}
+        }
+        var resid = z / hw;
+        $("video").style.transform = resid > 1.01 ? "scale(" + resid + ")" : "";
+    }
+    function initZoom(stream) {
+        state.hwMax = 1; state.zoomMax = 10; state.zoom = 1; state.hwApplied = 1;
+        try {
+            var tr = stream.getVideoTracks()[0];
+            var caps = tr.getCapabilities ? tr.getCapabilities() : null;
+            if (caps && caps.zoom && caps.zoom.max > 1) state.hwMax = caps.zoom.max;
+        } catch (e) {}
+        var r = $("zoom"); r.min = 1; r.max = 10; r.step = 0.1;
+        setZoom(1);
+    }
+    $("zoom").addEventListener("input", function () { setZoom(parseFloat(this.value)); });
+    $("zoom-in").addEventListener("click", function () { setZoom(state.zoom + 0.5); });
+    $("zoom-out").addEventListener("click", function () { setZoom(state.zoom - 0.5); });
+    (function () {   // قرص الإصبعين للتكبير
+        var d0 = 0, z0 = 1, el = $("s-scan");
+        function dist(e) { var a = e.touches[0], b = e.touches[1]; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+        el.addEventListener("touchstart", function (e) { if (e.touches.length === 2) { d0 = dist(e); z0 = state.zoom; } }, { passive: true });
+        el.addEventListener("touchmove", function (e) { if (e.touches.length === 2 && d0) setZoom(z0 * dist(e) / d0); }, { passive: true });
+        el.addEventListener("touchend", function () { d0 = 0; }, { passive: true });
+    })();
+
+    function startScan() {
+        $("scan-msg").textContent = "";
+        show("scan");
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            showResult("bad", "الكاميرا غير متاحة", "تعذّر تشغيل الكاميرا على هذا الجهاز.", false);
+            return;
+        }
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
+            .then(function (stream) {
+                if (!detector) loadJsQR();
+                state.stream = stream;
+                var v = $("video");
+                v.srcObject = stream;
+                initZoom(stream);
+                return v.play();
+            }).then(function () {
+                state.scanning = true;
+                scanLoop();
+            }).catch(function (e) {
+                stopCamera();
+                var denied = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
+                showResult("bad", denied ? "الكاميرا غير مسموحة" : "تعذّر تشغيل الكاميرا",
+                    denied ? "اسمح للمتصفح باستخدام الكاميرا من إعدادات الموقع ثم أعد المحاولة." : "أغلق التطبيقات الأخرى التي تستخدم الكاميرا وأعد المحاولة.", true);
+            });
+    }
+
+    // المتصفحات بلا BarcodeDetector (مثل Safari على الآيفون) تحتاج مكتبة فك QR؛ تُحمَّل عند الحاجة
+    function loadJsQR() {
+        if (typeof window.jsQR === "function") return Promise.resolve();
+        return new Promise(function (res) {
+            var sc = document.createElement("script");
+            sc.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
+            sc.onload = function () { res(); }; sc.onerror = function () { res(); };
+            document.head.appendChild(sc);
+        });
+    }
+    var detector = null;
+    try { if ("BarcodeDetector" in window) detector = new window.BarcodeDetector({ formats: ["qr_code"] }); } catch (e) { detector = null; }
+
+    var canvas = document.createElement("canvas");
+    var ctx = canvas.getContext("2d", { willReadFrequently: true });
+    var lastBad = 0;
+
+    function onCode(text) {
+        var q = parseQR(text);
+        if (!q) {
+            if (Date.now() - lastBad > 1500) { lastBad = Date.now(); $("scan-msg").textContent = "هذا ليس رمز حضور"; }
+            return false;
+        }
+        stopCamera();
+        if (navigator.vibrate) navigator.vibrate(60);
+        submitAttendance(q);
+        return true;
+    }
+
+    function scanLoop() {
+        if (!state.scanning) return;
+        var v = $("video");
+        if (v.readyState < 2 || !v.videoWidth) { state.scanTimer = setTimeout(scanLoop, 120); return; }
+
+        function next() { if (state.scanning) state.scanTimer = setTimeout(scanLoop, 110); }
+
+        // مع التكبير الرقمي نقصّ منتصف الصورة ونمسحه؛ بدونه نمسح الفيديو مباشرة
+        var resid = state.zoom / (state.hwApplied || 1), digital = resid > 1.01;
+        var vw = v.videoWidth, vh = v.videoHeight;
+        var sw = digital ? vw / resid : vw, sh = digital ? vh / resid : vh;
+        var sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+        var scale = Math.min(1, (digital ? 960 : 640) / Math.max(sw, sh));
+        var w = Math.max(1, Math.round(sw * scale)), h = Math.max(1, Math.round(sh * scale));
+
+        if (detector && !digital) {
+            detector.detect(v).then(function (codes) {
+                if (codes && codes.length && onCode(codes[0].rawValue)) return;
+                next();
+            }).catch(function () { detector = null; next(); });
+            return;
+        }
+
+        canvas.width = w; canvas.height = h;
+        ctx.drawImage(v, sx, sy, sw, sh, 0, 0, w, h);
+        if (detector) {
+            detector.detect(canvas).then(function (codes) {
+                if (codes && codes.length && onCode(codes[0].rawValue)) return;
+                next();
+            }).catch(function () { detector = null; next(); });
+            return;
+        }
+        var img = ctx.getImageData(0, 0, w, h);
+        var res = (typeof window.jsQR === "function") ? window.jsQR(img.data, w, h, { inversionAttempts: "dontInvert" }) : null;
+        if (res && res.data && onCode(res.data)) return;
+        next();
+    }
+
     function submitAttendance(q) {
         $("boot-text").textContent = "جاري تسجيل حضورك...";
         show("boot");
@@ -618,6 +826,9 @@
     }
 
     $("res-home").addEventListener("click", showHome);
+    $("scan-btn").addEventListener("click", startScan);
+    $("scan-cancel").addEventListener("click", function () { stopCamera(); showHome(); });
+    document.addEventListener("visibilitychange", function () { if (document.hidden && state.scanning) { stopCamera(); showHome(); } });
     $("blocked-retry").addEventListener("click", boot);
 
     boot();
