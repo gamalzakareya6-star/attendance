@@ -564,7 +564,7 @@
             var tg = el("button", "btn-ghost", showAllCourses ? "إخفاء المقررات التي لم تبدأ" : "عرض كل مقررات البرنامج");
             tg.addEventListener("click", function () { showAllCourses = !showAllCourses; renderCourses(); });
             box.appendChild(tg);
-            box.appendChild(el("p", "muted", "تُحسب النسب من المحاضرات التي أنشأها المشرفون في النظام."));
+            box.appendChild(el("p", "muted", "تُحسب الأعداد من المحاضرات التي أنشأها المشرفون في النظام."));
         }).catch(function () { box.replaceChildren(el("div", "err", "تعذّر تحميل حضورك. تأكد من الإنترنت ثم حاول مرة أخرى.")); });
     }
     $("h-courses").addEventListener("click", openCourses);
