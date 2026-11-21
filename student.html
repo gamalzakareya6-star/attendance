@@ -778,7 +778,23 @@
         next();
     }
 
-    function submitAttendance(q) {
+    // يحدد سبب رفض القواعد بدل رسالة عامة، ويعيد المحاولة مرة واحدة إن كانت بيانات الجهاز قديمة
+    function diagnose(q, sf, retried, bad) {
+        return docGet("/profiles/" + encodeURIComponent(state.profile.nationalId)).then(function (pr) {
+            if (pr.status === 403) { bad("بياناتك مرتبطة بجهاز آخر", "هذا الرقم القومي مسجّل على جهاز أو متصفح آخر. تواصل مع المشرف لإعادة التعيين. (P1)"); return; }
+            if (!pr.ok) { bad("تعذّر التحقق", "تأكد من الإنترنت وأعد المسح. (P0)"); return; }
+            return pr.json().then(function (pd) {
+                var f = pd.fields, p = state.profile;
+                var diff = sv(f, "name") !== p.name || sv(f, "phone") !== p.phone || sv(f, "deviceId") !== state.deviceId;
+                if (sv(f, "deviceId") !== state.deviceId) { bad("بياناتك مرتبطة بجهاز آخر", "هذا الرقم القومي مسجّل على جهاز آخر. تواصل مع المشرف. (P2)"); return; }
+                if (diff && !retried) { p.name = sv(f, "name"); p.phone = sv(f, "phone"); cacheProfile(p); return submitAttendance(q, true); }
+                if (!retried) return submitAttendance(q, true);     // ربما تغيّر الرمز أثناء المسح
+                bad("الرمز لم يعد صالحًا", "الرمز يتغيّر باستمرار. امسح الرمز الظاهر الآن على الشاشة. إن تكرر الخطأ أرسل للمشرف الرمز: (T)");
+            });
+        });
+    }
+
+    function submitAttendance(q, retried) {
         $("boot-text").textContent = "جاري تسجيل حضورك...";
         show("boot");
         var p = state.profile;
@@ -814,7 +830,7 @@
                             clearQR();
                             if (!sd) showResult("bad", "الجلسة غير موجودة", "تأكد أنك تمسح الرمز الظاهر على الشاشة.");
                             else if (expired) showResult("bad", "انتهت الجلسة", "أُغلقت جلسة الحضور هذه.");
-                            else showResult("bad", "الرمز لم يعد صالحًا", "الرمز يتغيّر باستمرار. امسح الرمز الظاهر الآن على الشاشة بكاميرا هاتفك.");
+                            else return diagnose(q, f, retried, function (t, x) { showResult("bad", t, x); });
                         });
                     }
                     showResult("bad", "حدث خطأ", "تعذّر التسجيل. امسح الرمز مرة أخرى.");
