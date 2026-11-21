@@ -517,8 +517,7 @@
             } catch (e) { console.error(e); toast('تعذّر تحميل الكشف. تأكد من نشر القواعد الجديدة', 'err'); }
         });
     }
-    function statusOf(pct, total) { return !total ? '' : pct > 25 ? 'معرّض للحرمان' : pct > 10 ? 'تنبيه' : 'منتظم'; }
-    function renderSheet() {
+        function renderSheet() {
         const box = $('c-list');
         const term = $('c-search').value.trim().toLowerCase();
         const rows = term ? sheetRows.filter(r => `${r.name} ${r.nid}`.toLowerCase().includes(term)) : sheetRows;
@@ -529,14 +528,12 @@
             row.appendChild(el('div', 'n', i + 1));
             const main = el('div', 'main');
             main.appendChild(el('div', 'name', r.name));
-            const st = statusOf(r.pct, sheetMeta.total);
-            main.appendChild(el('div', 'meta', `${r.nid}${r.own ? '' : ' • خارج برامج المقرر'} • ${st}`));
+                        main.appendChild(el('div', 'meta', `${r.nid}${r.own ? '' : ' • خارج برامج المقرر'}`));
             const det = el('div', 'meta', 'حضر في: ' + (r.dates.map(fmtTime).join(' ، ') || '—'));
             det.style.display = 'none';
             main.appendChild(det);
             row.appendChild(main);
             const b = el('div', 'badge', `${r.attended}/${sheetMeta.total} • غياب ${r.missed}`);
-            if (r.pct > 25 && sheetMeta.total) b.style.cssText = 'background:var(--danger-soft);color:var(--danger)';
             row.appendChild(b);
             row.style.cursor = 'pointer';
             row.addEventListener('click', () => { det.style.display = det.style.display === 'none' ? 'block' : 'none'; });
@@ -547,9 +544,9 @@
     function exportSheet() {
         if (!sheetRows.length) return toast('لا توجد بيانات لتصديرها', 'err');
         const asText = (v) => (/^\d{6,}$/.test(String(v || '')) ? `="${v}"` : csvSafe(v || ''));
-        let csv = '\ufeffم,اسم الطالب,الرقم القومي,الهاتف,حضر,غاب,نسبة الغياب %,الحالة\n';
+        let csv = '\ufeffم,اسم الطالب,الرقم القومي,الهاتف,حضر,غاب\n';
         sheetRows.forEach((r, i) => {
-            csv += `${i + 1},${csvSafe(r.name)},${asText(r.nid)},${asText(r.phone)},${r.attended},${r.missed},${r.pct},${csvSafe(statusOf(r.pct, sheetMeta.total))}\n`;
+            csv += `${i + 1},${csvSafe(r.name)},${asText(r.nid)},${asText(r.phone)},${r.attended},${r.missed}\n`;
         });
         const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
         const a = document.createElement('a');

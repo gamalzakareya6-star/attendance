@@ -554,12 +554,9 @@
                 row.appendChild(el("div", "crs-n", c[1] + " (" + c[0] + ")"));
                 if (!h && !a) { row.appendChild(el("div", "muted", "لم تبدأ محاضرات مسجّلة بعد")); }
                 else {
-                    var total = Math.max(h, a), miss = total - a, pct = total ? Math.round(miss * 100 / total) : 0;
-                    var cls = pct > 25 ? "bad-t" : pct > 10 ? "warn-t" : "ok-t";
-                    var txt = pct > 25 ? "⛔ معرّض للحرمان" : pct > 10 ? "⚠️ غياب مرتفع" : "✅ منتظم";
-                    row.appendChild(el("div", "crs-s", "حضرت " + a + " من " + total + " محاضرة · غبت " + miss));
+                    var total = Math.max(h, a);
+                    row.appendChild(el("div", "crs-s", "حضرت " + a + " من " + total + " محاضرة"));
                     var bar = el("div", "bar"), fill = el("i"); fill.style.width = (total ? Math.round(a * 100 / total) : 0) + "%"; bar.appendChild(fill); row.appendChild(bar);
-                    row.appendChild(el("div", "crs-t " + cls, txt + " (غياب " + pct + "%)"));
                 }
                 box.appendChild(row);
             });
@@ -567,7 +564,7 @@
             var tg = el("button", "btn-ghost", showAllCourses ? "إخفاء المقررات التي لم تبدأ" : "عرض كل مقررات البرنامج");
             tg.addEventListener("click", function () { showAllCourses = !showAllCourses; renderCourses(); });
             box.appendChild(tg);
-            box.appendChild(el("p", "muted", "تُحسب النسب من المحاضرات التي أنشأها المشرفون في النظام. وفق اللائحة: الغياب فوق 25% قد يؤدي إلى الحرمان."));
+            box.appendChild(el("p", "muted", "تُحسب النسب من المحاضرات التي أنشأها المشرفون في النظام."));
         }).catch(function () { box.replaceChildren(el("div", "err", "تعذّر تحميل حضورك. تأكد من الإنترنت ثم حاول مرة أخرى.")); });
     }
     $("h-courses").addEventListener("click", openCourses);
